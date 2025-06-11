@@ -18,6 +18,8 @@ variables:
     value: '3.9'
   - name: functionAppName
     value: 'prodbestrongfuncapp1'
+  - name: resourceGroupName
+    value: 'rg-prod'
 
 stages:
 - stage: Build
@@ -74,7 +76,7 @@ stages:
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
-                az functionapp config appsettings set --name $(functionAppName) --resource-group $(functionAppName) --settings \
+                az functionapp config appsettings set --name $(functionAppName) --resource-group $(resourceGroupName) --settings \
                   FileShareConnectionString="$(FileShareConnectionString)" \
                   FormRecognizerEndpoint="$(FormRecognizerEndpoint)" \
                   FormRecognizerKey="$(FormRecognizerKey)" \
