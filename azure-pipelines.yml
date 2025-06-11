@@ -2,7 +2,7 @@ trigger:
   branches:
     include:
     - main
-    - develop
+
   paths:
     include:
     - '**/*.py'
@@ -68,12 +68,12 @@ stages:
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
               deploymentMethod: 'auto'
               appSettings: |
-                -FileShareConnectionString "$(FileShareConnectionString)"
-                -FormRecognizerEndpoint "$(FormRecognizerEndpoint)"
-                -FormRecognizerKey "$(FormRecognizerKey)"
-                -BlobStorageConnectionString "$(BlobStorageConnectionString)"
-                -DiscordWebhookUrl "$(DiscordWebhookUrl)"
-                -SlackWebhookUrl "$(SlackWebhookUrl)"
+                FileShareConnectionString=$(FileShareConnectionString)
+                FormRecognizerEndpoint=$(FormRecognizerEndpoint)
+                FormRecognizerKey=$(FormRecognizerKey)
+                BlobStorageConnectionString=$(BlobStorageConnectionString)
+                DiscordWebhookUrl=$(DiscordWebhookUrl)
+                SlackWebhookUrl=$(SlackWebhookUrl)
 
 - stage: DeployDev
   displayName: 'Deploy to Dev'
@@ -93,9 +93,9 @@ stages:
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
               deploymentMethod: 'auto'
               appSettings: |
-                -FileShareConnectionString "$(FileShareConnectionString)"
-                -FormRecognizerEndpoint "$(FormRecognizerEndpoint)"
-                -FormRecognizerKey "$(FormRecognizerKey)"
-                -BlobStorageConnectionString "$(BlobStorageConnectionString)"
-                -DiscordWebhookUrl "$(DiscordWebhookUrl)"
-                -SlackWebhookUrl "$(SlackWebhookUrl)" 
+                FileShareConnectionString=$(FileShareConnectionString)
+                FormRecognizerEndpoint=$(FormRecognizerEndpoint)
+                FormRecognizerKey=$(FormRecognizerKey)
+                BlobStorageConnectionString=$(BlobStorageConnectionString)
+                DiscordWebhookUrl=$(DiscordWebhookUrl)
+                SlackWebhookUrl=$(SlackWebhookUrl) 
