@@ -67,7 +67,21 @@ stages:
               appName: '$(functionAppName)'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
               deploymentMethod: 'auto'
-              appSettings: '{"FileShareConnectionString":"$(FileShareConnectionString)","FormRecognizerEndpoint":"$(FormRecognizerEndpoint)","FormRecognizerKey":"$(FormRecognizerKey)","BlobStorageConnectionString":"$(BlobStorageConnectionString)","DiscordWebhookUrl":"$(DiscordWebhookUrl)","SlackWebhookUrl":"$(SlackWebhookUrl)","WEBSITE_RUN_FROM_PACKAGE":"1"}'
+
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: 'bestrong-arm'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                az functionapp config appsettings set --name $(functionAppName) --resource-group $(functionAppName) --settings \
+                  FileShareConnectionString="$(FileShareConnectionString)" \
+                  FormRecognizerEndpoint="$(FormRecognizerEndpoint)" \
+                  FormRecognizerKey="$(FormRecognizerKey)" \
+                  BlobStorageConnectionString="$(BlobStorageConnectionString)" \
+                  DiscordWebhookUrl="$(DiscordWebhookUrl)" \
+                  SlackWebhookUrl="$(SlackWebhookUrl)" \
+                  WEBSITE_RUN_FROM_PACKAGE="1"
 
 - stage: DeployDev
   displayName: 'Deploy to Dev'
