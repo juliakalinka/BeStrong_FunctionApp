@@ -67,14 +67,7 @@ stages:
               appName: '$(functionAppName)'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
               deploymentMethod: 'auto'
-              appSettings: |
-                FileShareConnectionString=$(FileShareConnectionString)
-                FormRecognizerEndpoint=$(FormRecognizerEndpoint)
-                FormRecognizerKey=$(FormRecognizerKey)
-                BlobStorageConnectionString=$(BlobStorageConnectionString)
-                DiscordWebhookUrl=$(DiscordWebhookUrl)
-                SlackWebhookUrl=$(SlackWebhookUrl)
-                WEBSITE_RUN_FROM_PACKAGE=1
+              appSettings: '{"FileShareConnectionString":"$(FileShareConnectionString)","FormRecognizerEndpoint":"$(FormRecognizerEndpoint)","FormRecognizerKey":"$(FormRecognizerKey)","BlobStorageConnectionString":"$(BlobStorageConnectionString)","DiscordWebhookUrl":"$(DiscordWebhookUrl)","SlackWebhookUrl":"$(SlackWebhookUrl)","WEBSITE_RUN_FROM_PACKAGE":"1"}'
 
 - stage: DeployDev
   displayName: 'Deploy to Dev'
