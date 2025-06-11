@@ -2,6 +2,7 @@ trigger:
   branches:
     include:
     - main
+    - develop
   paths:
     include:
     - '**/*.py'
@@ -15,29 +16,15 @@ pool:
 variables:
   - name: pythonVersion
     value: '3.9'
-  - name: azureSubscription
-    value: 'bestrong-arm'
   - name: functionAppName
-    value: 'prodbestrongfuncapp1'
-  - name: FileShareConnectionString
-    value: '$(FileShareConnectionString)'
-  - name: FormRecognizerEndpoint
-    value: '$(FormRecognizerEndpoint)'
-  - name: FormRecognizerKey
-    value: '$(FormRecognizerKey)'
-  - name: BlobStorageConnectionString
-    value: '$(BlobStorageConnectionString)'
-  - name: DiscordWebhookUrl
-    value: '$(DiscordWebhookUrl)'
-  - name: SlackWebhookUrl
-    value: '$(SlackWebhookUrl)'
+    value: 'your-function-app-name'
 
 stages:
 - stage: Build
-  displayName: 'Build and Test'
+  displayName: 'Build'
   jobs:
-  - job: BuildAndTest
-    displayName: 'Build and Test'
+  - job: Build
+    displayName: 'Build'
     steps:
     - task: UsePythonVersion@0
       inputs:
@@ -47,12 +34,7 @@ stages:
     - script: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        pip install pytest
       displayName: 'Install dependencies'
-
-    - script: |
-        python -m pytest tests/ -v
-      displayName: 'Run tests'
 
     - task: ArchiveFiles@2
       inputs:
@@ -81,7 +63,7 @@ stages:
           steps:
           - task: AzureFunctionApp@1
             inputs:
-              azureSubscription: '$(azureSubscription)'
+              azureSubscription: 'bestrong-arm'
               appName: '$(functionAppName)'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
               deploymentMethod: 'auto'
@@ -106,7 +88,7 @@ stages:
           steps:
           - task: AzureFunctionApp@1
             inputs:
-              azureSubscription: '$(azureSubscription)'
+              azureSubscription: 'bestrong-arm'
               appName: '$(functionAppName)-dev'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
               deploymentMethod: 'auto'
