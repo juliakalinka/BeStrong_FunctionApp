@@ -74,6 +74,7 @@ stages:
                 BlobStorageConnectionString=$(BlobStorageConnectionString)
                 DiscordWebhookUrl=$(DiscordWebhookUrl)
                 SlackWebhookUrl=$(SlackWebhookUrl)
+                WEBSITE_RUN_FROM_PACKAGE=1
 
 - stage: DeployDev
   displayName: 'Deploy to Dev'
