@@ -1,0 +1,119 @@
+trigger:
+  branches:
+    include:
+    - main
+  paths:
+    include:
+    - '**/*.py'
+    - 'requirements.txt'
+    - 'host.json'
+    - 'local.settings.json'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+variables:
+  - name: pythonVersion
+    value: '3.9'
+  - name: azureSubscription
+    value: 'bestrong-arm'
+  - name: functionAppName
+    value: 'prodbestrongfuncapp1'
+  - name: FileShareConnectionString
+    value: '$(FileShareConnectionString)'
+  - name: FormRecognizerEndpoint
+    value: '$(FormRecognizerEndpoint)'
+  - name: FormRecognizerKey
+    value: '$(FormRecognizerKey)'
+  - name: BlobStorageConnectionString
+    value: '$(BlobStorageConnectionString)'
+  - name: DiscordWebhookUrl
+    value: '$(DiscordWebhookUrl)'
+  - name: SlackWebhookUrl
+    value: '$(SlackWebhookUrl)'
+
+stages:
+- stage: Build
+  displayName: 'Build and Test'
+  jobs:
+  - job: BuildAndTest
+    displayName: 'Build and Test'
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '$(pythonVersion)'
+        addToPath: true
+
+    - script: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest
+      displayName: 'Install dependencies'
+
+    - script: |
+        python -m pytest tests/ -v
+      displayName: 'Run tests'
+
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+        replaceExistingArchive: true
+
+    - task: PublishBuildArtifacts@1
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'drop'
+        publishLocation: 'Container'
+
+- stage: Deploy
+  displayName: 'Deploy'
+  dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+  jobs:
+  - deployment: DeployToProduction
+    environment: 'production'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureFunctionApp@1
+            inputs:
+              azureSubscription: '$(azureSubscription)'
+              appName: '$(functionAppName)'
+              package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
+              deploymentMethod: 'auto'
+              appSettings: |
+                -FileShareConnectionString "$(FileShareConnectionString)"
+                -FormRecognizerEndpoint "$(FormRecognizerEndpoint)"
+                -FormRecognizerKey "$(FormRecognizerKey)"
+                -BlobStorageConnectionString "$(BlobStorageConnectionString)"
+                -DiscordWebhookUrl "$(DiscordWebhookUrl)"
+                -SlackWebhookUrl "$(SlackWebhookUrl)"
+
+- stage: DeployDev
+  displayName: 'Deploy to Dev'
+  dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  jobs:
+  - deployment: DeployToDev
+    environment: 'development'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureFunctionApp@1
+            inputs:
+              azureSubscription: '$(azureSubscription)'
+              appName: '$(functionAppName)-dev'
+              package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
+              deploymentMethod: 'auto'
+              appSettings: |
+                -FileShareConnectionString "$(FileShareConnectionString)"
+                -FormRecognizerEndpoint "$(FormRecognizerEndpoint)"
+                -FormRecognizerKey "$(FormRecognizerKey)"
+                -BlobStorageConnectionString "$(BlobStorageConnectionString)"
+                -DiscordWebhookUrl "$(DiscordWebhookUrl)"
+                -SlackWebhookUrl "$(SlackWebhookUrl)" 
