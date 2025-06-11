@@ -47,9 +47,6 @@ __blobstorage__
 __queuestorage__
 __azurite_db*__.json
 
-local.settings.json
-host.json
-
 .vscode/
 
 __pycache__/
