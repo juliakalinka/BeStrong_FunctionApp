@@ -2,7 +2,7 @@ trigger:
   branches:
     include:
     - main
-
+    - develop
   paths:
     include:
     - '**/*.py'
@@ -16,10 +16,16 @@ pool:
 variables:
   - name: pythonVersion
     value: '3.9'
+  - name: environment
+    value: 'prod'  # Значення буде змінено в Azure DevOps
   - name: functionAppName
-    value: 'prodbestrongfuncapp1'
+    value: $[format('{0}bestrongfuncapp1', variables['environment'])]
   - name: resourceGroupName
-    value: 'rg-prod'
+    value: $[format('rg-{0}', variables['environment'])]
+  - name: devFunctionAppName
+    value: 'devbestrongfuncapp1'
+  - name: devResourceGroupName
+    value: 'rg-dev'
 
 stages:
 - stage: Build
@@ -52,8 +58,55 @@ stages:
         ArtifactName: 'drop'
         publishLocation: 'Container'
 
-- stage: Deploy
-  displayName: 'Deploy'
+- stage: DeployDev
+  displayName: 'Deploy to Dev'
+  dependsOn: Build
+  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
+  jobs:
+  - deployment: DeployToDev
+    environment: 'development'
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureFunctionApp@1
+            inputs:
+              azureSubscription: 'bestrong-arm'
+              appName: '$(devFunctionAppName)'
+              package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
+              deploymentMethod: 'auto'
+
+          - script: |
+              echo "Checking environment variables:"
+              echo "FileShareConnectionString exists: $([ ! -z "$(FileShareConnectionString)" ] && echo 'yes' || echo 'no')"
+              echo "FormRecognizerEndpoint exists: $([ ! -z "$(FormRecognizerEndpoint)" ] && echo 'yes' || echo 'no')"
+              echo "FormRecognizerKey exists: $([ ! -z "$(FormRecognizerKey)" ] && echo 'yes' || echo 'no')"
+              echo "BlobStorageConnectionString exists: $([ ! -z "$(BlobStorageConnectionString)" ] && echo 'yes' || echo 'no')"
+              echo "DiscordWebhookUrl exists: $([ ! -z "$(DiscordWebhookUrl)" ] && echo 'yes' || echo 'no')"
+              echo "SlackWebhookUrl exists: $([ ! -z "$(SlackWebhookUrl)" ] && echo 'yes' || echo 'no')"
+            displayName: 'Check Variables'
+
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: 'bestrong-arm'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                echo "Setting app settings for function app $(devFunctionAppName) in resource group $(devResourceGroupName)"
+                az functionapp config appsettings set --name $(devFunctionAppName) --resource-group $(devResourceGroupName) --settings \
+                  FileShareConnectionString="$(FileShareConnectionString)" \
+                  FormRecognizerEndpoint="$(FormRecognizerEndpoint)" \
+                  FormRecognizerKey="$(FormRecognizerKey)" \
+                  BlobStorageConnectionString="$(BlobStorageConnectionString)" \
+                  DiscordWebhookUrl="$(DiscordWebhookUrl)" \
+                  SlackWebhookUrl="$(SlackWebhookUrl)" \
+                  WEBSITE_RUN_FROM_PACKAGE="1"
+                
+                echo "Verifying settings:"
+                az functionapp config appsettings list --name $(devFunctionAppName) --resource-group $(devResourceGroupName)
+
+- stage: DeployProd
+  displayName: 'Deploy to Production'
   dependsOn: Build
   condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
   jobs:
@@ -70,12 +123,23 @@ stages:
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
               deploymentMethod: 'auto'
 
+          - script: |
+              echo "Checking environment variables:"
+              echo "FileShareConnectionString exists: $([ ! -z "$(FileShareConnectionString)" ] && echo 'yes' || echo 'no')"
+              echo "FormRecognizerEndpoint exists: $([ ! -z "$(FormRecognizerEndpoint)" ] && echo 'yes' || echo 'no')"
+              echo "FormRecognizerKey exists: $([ ! -z "$(FormRecognizerKey)" ] && echo 'yes' || echo 'no')"
+              echo "BlobStorageConnectionString exists: $([ ! -z "$(BlobStorageConnectionString)" ] && echo 'yes' || echo 'no')"
+              echo "DiscordWebhookUrl exists: $([ ! -z "$(DiscordWebhookUrl)" ] && echo 'yes' || echo 'no')"
+              echo "SlackWebhookUrl exists: $([ ! -z "$(SlackWebhookUrl)" ] && echo 'yes' || echo 'no')"
+            displayName: 'Check Variables'
+
           - task: AzureCLI@2
             inputs:
               azureSubscription: 'bestrong-arm'
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
+                echo "Setting app settings for function app $(functionAppName) in resource group $(resourceGroupName)"
                 az functionapp config appsettings set --name $(functionAppName) --resource-group $(resourceGroupName) --settings \
                   FileShareConnectionString="$(FileShareConnectionString)" \
                   FormRecognizerEndpoint="$(FormRecognizerEndpoint)" \
@@ -84,28 +148,6 @@ stages:
                   DiscordWebhookUrl="$(DiscordWebhookUrl)" \
                   SlackWebhookUrl="$(SlackWebhookUrl)" \
                   WEBSITE_RUN_FROM_PACKAGE="1"
-
-- stage: DeployDev
-  displayName: 'Deploy to Dev'
-  dependsOn: Build
-  condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
-  jobs:
-  - deployment: DeployToDev
-    environment: 'development'
-    strategy:
-      runOnce:
-        deploy:
-          steps:
-          - task: AzureFunctionApp@1
-            inputs:
-              azureSubscription: 'bestrong-arm'
-              appName: '$(functionAppName)-dev'
-              package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
-              deploymentMethod: 'auto'
-              appSettings: |
-                FileShareConnectionString=$(FileShareConnectionString)
-                FormRecognizerEndpoint=$(FormRecognizerEndpoint)
-                FormRecognizerKey=$(FormRecognizerKey)
-                BlobStorageConnectionString=$(BlobStorageConnectionString)
-                DiscordWebhookUrl=$(DiscordWebhookUrl)
-                SlackWebhookUrl=$(SlackWebhookUrl) 
+                
+                echo "Verifying settings:"
+                az functionapp config appsettings list --name $(functionAppName) --resource-group $(resourceGroupName) 
