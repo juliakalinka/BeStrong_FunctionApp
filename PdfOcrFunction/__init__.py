@@ -9,8 +9,8 @@ import tempfile
 import urllib.request
 import urllib.parse
 
-# Temporarily commenting out Azure packages to test one by one
-# from azure.core.credentials import AzureKeyCredential
+# Testing Azure packages one by one - Step 1: AzureKeyCredential
+from azure.core.credentials import AzureKeyCredential
 # from azure.storage.blob import BlobServiceClient
 # from azure.storage.fileshare import ShareServiceClient
 # from azure.ai.formrecognizer import DocumentAnalysisClient
@@ -50,14 +50,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(f"Initialization error: {str(e)}", status_code=500)
 
     try:
-        logging.info('Starting basic test - no Azure packages')
+        logging.info('Testing with AzureKeyCredential package')
         
-        # Simulate successful processing
+        # Test AzureKeyCredential import
+        test_key = AzureKeyCredential("dummy_key_for_testing")
+        
         test_result = {
-            "status": "basic_test",
+            "status": "test_azure_credentials",
             "file_name": file_name,
             "timestamp": datetime.utcnow().isoformat(),
-            "message": "Function works without Azure packages"
+            "message": "AzureKeyCredential package works!",
+            "credential_test": "passed"
         }
         
         logging.info('Basic test completed successfully')
