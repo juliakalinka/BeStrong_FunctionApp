@@ -30,15 +30,37 @@ stages:
         pip install -r requirements.txt --target .python_packages/lib/site-packages
       displayName: 'Install dependencies'
 
+    - script: |
+        echo "Preparing clean package..."
+        mkdir $(Build.ArtifactStagingDirectory)/function_app
+        
+        # Copy only required files
+        cp function_app.py $(Build.ArtifactStagingDirectory)/function_app/
+        cp host.json $(Build.ArtifactStagingDirectory)/function_app/
+        cp requirements.txt $(Build.ArtifactStagingDirectory)/function_app/
+        
+        # Copy Python packages if they exist
+        if [ -d ".python_packages" ]; then
+          cp -r .python_packages $(Build.ArtifactStagingDirectory)/function_app/
+        fi
+        
+        echo "Package contents:"
+        ls -la $(Build.ArtifactStagingDirectory)/function_app/
+      displayName: 'Prepare Function Package'
+
     - task: ArchiveFiles@2
       displayName: 'Archive files'
       inputs:
-        rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
+        rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/function_app'
         includeRootFolder: false
         archiveType: zip
         archiveFile: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
         replaceExistingArchive: true
-        verbose: true
+
+    - script: |
+        echo "Verifying archive contents:"
+        unzip -l $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
+      displayName: 'Verify Archive'
 
     - publish: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
       artifact: drop
