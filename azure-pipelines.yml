@@ -351,6 +351,48 @@ stages:
               appSettings: '-FUNCTIONS_WORKER_RUNTIME python -FUNCTIONS_EXTENSION_VERSION ~4 -FileShareConnectionString "$(FileShareConnectionString)" -FormRecognizerEndpoint "$(FormRecognizerEndpoint)" -FormRecognizerKey "$(FormRecognizerKey)" -BlobStorageConnectionString "$(BlobStorageConnectionString)" -DiscordWebhookUrl "$(DiscordWebhookUrl)" -SlackWebhookUrl "$(SlackWebhookUrl)" -ENVIRONMENT production -BUILD_ID $(Build.BuildId) -WEBSITE_ENABLE_SYNC_UPDATE_SITE true'
 
           - task: AzureCLI@2
+            displayName: 'Force Function App Restart and Clear Cache'
+            inputs:
+              azureSubscription: 'bestrong-arm'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                echo "Forcing Function App restart to clear cache..."
+                
+                # Stop Function App
+                echo "Stopping Function App..."
+                az functionapp stop \
+                  --name $(functionAppNameProd) \
+                  --resource-group $(resourceGroupProd)
+                
+                # Clear WEBSITE_RUN_FROM_PACKAGE if it conflicts
+                echo "Clearing potentially conflicting settings..."
+                az functionapp config appsettings delete \
+                  --name $(functionAppNameProd) \
+                  --resource-group $(resourceGroupProd) \
+                  --setting-names WEBSITE_RUN_FROM_PACKAGE || echo "Setting not found"
+                
+                # Wait a bit
+                sleep 30
+                
+                # Start Function App  
+                echo "Starting Function App..."
+                az functionapp start \
+                  --name $(functionAppNameProd) \
+                  --resource-group $(resourceGroupProd)
+                
+                # Wait for startup
+                echo "Waiting for Function App to start..."
+                sleep 60
+                
+                # Check if it's running
+                APP_STATE=$(az functionapp show \
+                  --name $(functionAppNameProd) \
+                  --resource-group $(resourceGroupProd) \
+                  --query "state" -o tsv)
+                echo "Function App state after restart: $APP_STATE"
+
+          - task: AzureCLI@2
             displayName: 'Post-Deploy Validation'
             inputs:
               azureSubscription: 'bestrong-arm'
@@ -373,10 +415,10 @@ stages:
                 
                 # Check if functions are loaded
                 echo "Checking function list..."
-                FUNCTIONS_LIST=$(az functionapp function list \
-                  --name $(functionAppNameProd) \
-                  --resource-group $(resourceGroupProd) \
-                  --query "[].{name:name,triggerType:config.bindings[0].type}" \
+                FUNCTIONS_LIST=$(az rest \
+                  --method GET \
+                  --url "https://management.azure.com/subscriptions/$(az account show --query id -o tsv)/resourceGroups/$(resourceGroupProd)/providers/Microsoft.Web/sites/$(functionAppNameProd)/functions?api-version=2021-02-01" \
+                  --query "value[].{name:name,triggerType:properties.config.bindings[0].type}" \
                   --output table 2>&1)
                 
                 if [ -z "$FUNCTIONS_LIST" ] || [[ "$FUNCTIONS_LIST" == *"No Functions found"* ]]; then
@@ -392,10 +434,18 @@ stages:
                   
                   # Check logs for startup errors
                   echo "Getting application logs..."
-                  az functionapp logs tail \
+                  # Try alternative log method
+                  az webapp log tail \
                     --name $(functionAppNameProd) \
                     --resource-group $(resourceGroupProd) \
-                    --timeout 15 || echo "Could not get logs"
+                    --timeout 15 || echo "Could not get logs via webapp method"
+                  
+                  # Try getting logs via REST API
+                  echo "Trying to get logs via REST API..."
+                  az rest \
+                    --method GET \
+                    --url "https://$(functionAppNameProd).scm.azurewebsites.net/api/logs/recent" \
+                    --headers "Content-Type=application/json" || echo "Could not get logs via REST"
                   
                   # Check if package is accessible
                   echo "Testing package accessibility..."
@@ -474,6 +524,17 @@ stages:
               test_endpoint "${BASE_URL}/ping" "ping" 10 "200"
               test_endpoint "${BASE_URL}/health" "health" 10 "200"
               test_endpoint "${BASE_URL}/process-pdf" "process-pdf" 5 "400"  # Should return 400 without parameters
+              
+              # If endpoints still fail, try SCM API to check functions
+              if [ "$?" -ne 0 ]; then
+                echo "=== Checking functions via SCM API ==="
+                SCM_FUNCTIONS_URL="https://$(functionAppNameProd).scm.azurewebsites.net/api/functions"
+                curl -s "$SCM_FUNCTIONS_URL" | jq '.' || echo "Could not get functions via SCM API"
+                
+                echo "=== Checking app status via SCM ==="
+                SCM_STATUS_URL="https://$(functionAppNameProd).scm.azurewebsites.net/api/diagnostics/runtime"
+                curl -s "$SCM_STATUS_URL" | jq '.' || echo "Could not get runtime status"
+              fi
               
               echo "=== Endpoint testing completed ==="
             displayName: 'Comprehensive Endpoint Testing'
