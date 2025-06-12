@@ -297,15 +297,19 @@ stages:
                   --query "linuxFxVersion" -o tsv)
                 echo "Current runtime: $RUNTIME"
                 
-                if [[ "$RUNTIME" != *"Python"* ]]; then
-                  echo "Setting Python runtime for production..."
+                # Ensure Python 3.9 runtime is set
+                if [[ "$RUNTIME" != "Python|3.9" ]]; then
+                  echo "Setting Python 3.9 runtime for production..."
                   az functionapp config set \
                     --name $(functionAppNameProd) \
                     --resource-group $(resourceGroupProd) \
                     --linux-fx-version "Python|3.9"
+                  
+                  echo "Waiting for runtime update to complete..."
+                  sleep 60
                 fi
                 
-                echo "Checking if Function App can be accessed..."
+                echo "Ensuring Function App is running..."
                 APP_STATE=$(az functionapp show \
                   --name $(functionAppNameProd) \
                   --resource-group $(resourceGroupProd) \
@@ -319,6 +323,11 @@ stages:
                     --resource-group $(resourceGroupProd)
                   sleep 30
                 fi
+                
+                # Check if we can access the SCM site
+                echo "Testing SCM site accessibility..."
+                SCM_URL="https://$(functionAppNameProd).scm.azurewebsites.net/api/ping"
+                curl -s -f "$SCM_URL" && echo "SCM site accessible" || echo "SCM site not accessible"
 
           - task: AzureFunctionApp@1
             displayName: 'Deploy Azure Function to Production'
@@ -327,107 +336,113 @@ stages:
               appType: 'functionAppLinux'
               appName: '$(functionAppNameProd)'
               package: '$(Pipeline.Workspace)/function-package/function-app.zip'
-              deploymentMethod: 'auto'
-              appSettings: '-FUNCTIONS_WORKER_RUNTIME python -FUNCTIONS_EXTENSION_VERSION ~4 -FileShareConnectionString "$(FileShareConnectionString)" -FormRecognizerEndpoint "$(FormRecognizerEndpoint)" -FormRecognizerKey "$(FormRecognizerKey)" -BlobStorageConnectionString "$(BlobStorageConnectionString)" -DiscordWebhookUrl "$(DiscordWebhookUrl)" -SlackWebhookUrl "$(SlackWebhookUrl)" -ENVIRONMENT production -BUILD_ID $(Build.BuildId)'
+              deploymentMethod: 'zipDeploy'
+              appSettings: |
+                -FUNCTIONS_WORKER_RUNTIME python 
+                -FUNCTIONS_EXTENSION_VERSION ~4 
+                -WEBSITE_RUN_FROM_PACKAGE 1
+                -FileShareConnectionString "$(FileShareConnectionString)" 
+                -FormRecognizerEndpoint "$(FormRecognizerEndpoint)" 
+                -FormRecognizerKey "$(FormRecognizerKey)" 
+                -BlobStorageConnectionString "$(BlobStorageConnectionString)" 
+                -DiscordWebhookUrl "$(DiscordWebhookUrl)" 
+                -SlackWebhookUrl "$(SlackWebhookUrl)" 
+                -ENVIRONMENT production 
+                -BUILD_ID $(Build.BuildId)
+                -WEBSITE_ENABLE_SYNC_UPDATE_SITE true
 
           - task: AzureCLI@2
-            displayName: 'Production Deployment Diagnostics'
+            displayName: 'Post-Deploy Validation'
             inputs:
               azureSubscription: 'bestrong-arm'
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
-                echo "=== Production Deployment Diagnostics ==="
+                echo "=== Post-Deploy Validation ==="
+                
+                # Wait for deployment to complete
+                echo "Waiting for deployment to complete..."
+                sleep 90
                 
                 # Check Function App status
                 echo "Checking Function App status..."
                 az functionapp show \
                   --name $(functionAppNameProd) \
                   --resource-group $(resourceGroupProd) \
-                  --query "{name:name,state:state,availabilityState:availabilityState,hostingEnvironmentProfile:hostingEnvironmentProfile}" \
+                  --query "{name:name,state:state,availabilityState:availabilityState}" \
                   --output table
                 
-                # Check runtime settings
-                echo "Checking runtime settings..."
-                az functionapp config show \
+                # Check if functions are loaded
+                echo "Checking function list..."
+                az functionapp function list \
                   --name $(functionAppNameProd) \
                   --resource-group $(resourceGroupProd) \
-                  --query "{linuxFxVersion:linuxFxVersion,nodeVersion:nodeVersion,pythonVersion:pythonVersion}" \
-                  --output table
+                  --query "[].{name:name,triggerType:config.bindings[0].type}" \
+                  --output table || echo "Could not retrieve function list"
                 
-                # Check application settings (without values for security)
-                echo "Checking application settings keys..."
-                az functionapp config appsettings list \
+                # Check application settings
+                echo "Verifying critical application settings..."
+                RUNTIME_SETTING=$(az functionapp config appsettings list \
                   --name $(functionAppNameProd) \
                   --resource-group $(resourceGroupProd) \
-                  --query "[].{name:name}" \
-                  --output table
+                  --query "[?name=='FUNCTIONS_WORKER_RUNTIME'].value" \
+                  --output tsv)
+                echo "FUNCTIONS_WORKER_RUNTIME: $RUNTIME_SETTING"
                 
-                # Check if Function App is running
-                echo "Waiting for Function App to be ready..."
-                sleep 30
-                
-                # Test basic connectivity
-                echo "Testing basic connectivity..."
-                SCMM_URL="https://$(functionAppNameProd).scm.azurewebsites.net/api/ping"
-                curl -s "$SCMM_URL" || echo "SCM ping failed"
-                
-                # Get Function App logs
-                echo "Getting recent logs..."
-                az functionapp log tail \
+                VERSION_SETTING=$(az functionapp config appsettings list \
                   --name $(functionAppNameProd) \
                   --resource-group $(resourceGroupProd) \
-                  --timeout 30 || echo "Could not retrieve logs"
+                  --query "[?name=='FUNCTIONS_EXTENSION_VERSION'].value" \
+                  --output tsv)
+                echo "FUNCTIONS_EXTENSION_VERSION: $VERSION_SETTING"
 
           - script: |
-              echo "Testing production endpoints with detailed diagnostics..."
+              echo "Testing production endpoints with comprehensive diagnostics..."
               BASE_URL="https://$(functionAppNameProd).azurewebsites.net/api"
               
-              # Test ping endpoint first
-              echo "=== Testing ping endpoint ==="
-              PING_URL="$BASE_URL/ping"
-              PING_RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}" "$PING_URL" 2>&1)
-              PING_STATUS=$(echo "$PING_RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
-              echo "Ping Status: $PING_STATUS"
-              echo "Ping Response: $(echo "$PING_RESPONSE" | sed '/HTTP_STATUS:/d')"
+              # Function to test endpoint with retries
+              test_endpoint() {
+                local url=$1
+                local name=$2
+                local max_attempts=$3
+                local expected_status=$4
+                
+                echo "=== Testing $name endpoint ==="
+                
+                for i in $(seq 1 $max_attempts); do
+                  echo "Attempt $i/$max_attempts for $name..."
+                  
+                  RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}\nTOTAL_TIME:%{time_total}" "$url" 2>&1)
+                  
+                  HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
+                  TOTAL_TIME=$(echo "$RESPONSE" | grep "TOTAL_TIME:" | cut -d: -f2)
+                  RESPONSE_BODY=$(echo "$RESPONSE" | sed '/HTTP_STATUS:/d' | sed '/TOTAL_TIME:/d')
+                  
+                  echo "HTTP Status: $HTTP_STATUS"
+                  echo "Response Time: ${TOTAL_TIME}s"
+                  echo "Response Body: $RESPONSE_BODY"
+                  
+                  if [ "$HTTP_STATUS" = "$expected_status" ]; then
+                    echo "✅ $name endpoint test passed!"
+                    return 0
+                  elif [ "$i" = "$max_attempts" ]; then
+                    echo "❌ $name endpoint test failed after $max_attempts attempts"
+                    echo "Final response: $RESPONSE_BODY"
+                    return 1
+                  else
+                    echo "Waiting 30 seconds before retry..."
+                    sleep 30
+                  fi
+                done
+              }
               
-              if [ "$PING_STATUS" = "200" ]; then
-                echo "✅ Basic connectivity confirmed!"
-              else
-                echo "⚠️ Basic connectivity failed, ping status: $PING_STATUS"
-              fi
+              # Test endpoints
+              test_endpoint "${BASE_URL}/ping" "ping" 10 "200"
+              test_endpoint "${BASE_URL}/health" "health" 10 "200"
+              test_endpoint "${BASE_URL}/process-pdf" "process-pdf" 5 "400"  # Should return 400 without parameters
               
-              # Test health endpoint
-              echo "=== Testing health endpoint ==="
-              HEALTH_URL="$BASE_URL/health"
-              
-              for i in {1..12}; do
-                echo "=== Production health check attempt $i/12 ==="
-                
-                RESPONSE=$(curl -s -w "\nHTTP_STATUS:%{http_code}\nTOTAL_TIME:%{time_total}" "$HEALTH_URL" 2>&1)
-                
-                HTTP_STATUS=$(echo "$RESPONSE" | grep "HTTP_STATUS:" | cut -d: -f2)
-                TOTAL_TIME=$(echo "$RESPONSE" | grep "TOTAL_TIME:" | cut -d: -f2)
-                RESPONSE_BODY=$(echo "$RESPONSE" | sed '/HTTP_STATUS:/d' | sed '/TOTAL_TIME:/d')
-                
-                echo "HTTP Status: $HTTP_STATUS"
-                echo "Response Time: ${TOTAL_TIME}s"
-                echo "Response Body: $RESPONSE_BODY"
-                
-                if [ "$HTTP_STATUS" = "200" ]; then
-                  echo "✅ Production health check passed!"
-                  break
-                elif [ "$i" = "12" ]; then
-                  echo "❌ Production health check failed after 12 attempts"
-                  echo "Final response: $RESPONSE_BODY"
-                  echo "Continuing with deployment..."
-                  break
-                else
-                  echo "Waiting 25 seconds before retry..."
-                  sleep 25
-                fi
-              done
-            displayName: 'Production Health Check'
+              echo "=== Endpoint testing completed ==="
+            displayName: 'Comprehensive Endpoint Testing'
 
           - script: |
               echo "Running production smoke tests..."
