@@ -128,6 +128,17 @@ stages:
         
         echo "Archive size:"
         ls -lh $(Build.ArtifactStagingDirectory)/function-app.zip
+        
+        echo "=== Testing function_app.py syntax ==="
+        # Extract and test syntax
+        unzip -j $(Build.ArtifactStagingDirectory)/function-app.zip function_app.py -d /tmp/
+        
+        # Test basic Python syntax
+        python3 -m py_compile /tmp/function_app.py && echo "✓ Syntax check passed" || echo "✗ Syntax errors found"
+        
+        # Test basic imports
+        echo "Testing basic imports..."
+        python3 -c "import azure.functions; print('✓ Azure Functions available')" || echo "✗ Azure Functions not available"
       displayName: 'Verify Archive'
 
     - publish: $(Build.ArtifactStagingDirectory)/function-app.zip
@@ -336,8 +347,8 @@ stages:
               appType: 'functionAppLinux'
               appName: '$(functionAppNameProd)'
               package: '$(Pipeline.Workspace)/function-package/function-app.zip'
-              deploymentMethod: 'zipDeploy'
-              appSettings: '-FUNCTIONS_WORKER_RUNTIME python -FUNCTIONS_EXTENSION_VERSION ~4 -WEBSITE_RUN_FROM_PACKAGE 1 -FileShareConnectionString "$(FileShareConnectionString)" -FormRecognizerEndpoint "$(FormRecognizerEndpoint)" -FormRecognizerKey "$(FormRecognizerKey)" -BlobStorageConnectionString "$(BlobStorageConnectionString)" -DiscordWebhookUrl "$(DiscordWebhookUrl)" -SlackWebhookUrl "$(SlackWebhookUrl)" -ENVIRONMENT production -BUILD_ID $(Build.BuildId) -WEBSITE_ENABLE_SYNC_UPDATE_SITE true'
+              deploymentMethod: 'runFromPackage'
+              appSettings: '-FUNCTIONS_WORKER_RUNTIME python -FUNCTIONS_EXTENSION_VERSION ~4 -FileShareConnectionString "$(FileShareConnectionString)" -FormRecognizerEndpoint "$(FormRecognizerEndpoint)" -FormRecognizerKey "$(FormRecognizerKey)" -BlobStorageConnectionString "$(BlobStorageConnectionString)" -DiscordWebhookUrl "$(DiscordWebhookUrl)" -SlackWebhookUrl "$(SlackWebhookUrl)" -ENVIRONMENT production -BUILD_ID $(Build.BuildId) -WEBSITE_ENABLE_SYNC_UPDATE_SITE true'
 
           - task: AzureCLI@2
             displayName: 'Post-Deploy Validation'
@@ -362,11 +373,46 @@ stages:
                 
                 # Check if functions are loaded
                 echo "Checking function list..."
-                az functionapp function list \
+                FUNCTIONS_LIST=$(az functionapp function list \
                   --name $(functionAppNameProd) \
                   --resource-group $(resourceGroupProd) \
                   --query "[].{name:name,triggerType:config.bindings[0].type}" \
-                  --output table || echo "Could not retrieve function list"
+                  --output table 2>&1)
+                
+                if [ -z "$FUNCTIONS_LIST" ] || [[ "$FUNCTIONS_LIST" == *"No Functions found"* ]]; then
+                  echo "❌ No functions found in Function App!"
+                  
+                  # Get more detailed info about deployment
+                  echo "Getting deployment status..."
+                  az functionapp deployment list \
+                    --name $(functionAppNameProd) \
+                    --resource-group $(resourceGroupProd) \
+                    --query "[0].{status:status,message:message,receivedTime:receivedTime}" \
+                    --output table || echo "Could not get deployment status"
+                  
+                  # Check logs for startup errors
+                  echo "Getting application logs..."
+                  az functionapp logs tail \
+                    --name $(functionAppNameProd) \
+                    --resource-group $(resourceGroupProd) \
+                    --timeout 15 || echo "Could not get logs"
+                  
+                  # Check if package is accessible
+                  echo "Testing package accessibility..."
+                  PACKAGE_URL=$(az functionapp config appsettings list \
+                    --name $(functionAppNameProd) \
+                    --resource-group $(resourceGroupProd) \
+                    --query "[?name=='WEBSITE_RUN_FROM_PACKAGE'].value" \
+                    --output tsv)
+                  echo "Package URL: $PACKAGE_URL"
+                  
+                  if [ ! -z "$PACKAGE_URL" ]; then
+                    curl -I "$PACKAGE_URL" || echo "Package not accessible"
+                  fi
+                else
+                  echo "✅ Functions found:"
+                  echo "$FUNCTIONS_LIST"
+                fi
                 
                 # Check application settings
                 echo "Verifying critical application settings..."
