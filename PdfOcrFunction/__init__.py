@@ -4,9 +4,11 @@ import os
 import json
 from datetime import datetime
 
-# Commented out for testing - uncomment after basic function works
-# import tempfile  
-# import requests
+# Adding back basic Python modules first
+import tempfile  
+import requests
+
+# Still commented - will add one by one
 # from azure.storage.blob import BlobServiceClient
 # from azure.storage.fileshare import ShareServiceClient
 # from azure.ai.formrecognizer import DocumentAnalysisClient
