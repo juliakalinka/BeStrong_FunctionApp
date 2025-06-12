@@ -54,7 +54,7 @@ stages:
         mkdir -p $(Build.ArtifactStagingDirectory)/function_package
         
         # Copy function files
-        cp function_app.py $(Build.ArtifactStagingDirectory)/function_package/
+        cp -r PdfOcrFunction $(Build.ArtifactStagingDirectory)/function_package/
         cp host.json $(Build.ArtifactStagingDirectory)/function_package/
         cp requirements.txt $(Build.ArtifactStagingDirectory)/function_package/
         
