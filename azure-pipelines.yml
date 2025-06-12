@@ -1,62 +1,74 @@
 trigger:
-  branches:
-    include:
-    - main
-    - develop
-  paths:
-    include:
-    - '**/*.py'
-    - 'requirements.txt'
-    - 'host.json'
-    - 'local.settings.json'
+  - main
 
 pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  - name: pythonVersion
-    value: '3.9'
-  - name: environment
-    value: 'prod'  # Значення буде змінено в Azure DevOps
-  - name: functionAppName
-    value: $[format('{0}bestrongfuncapp1', variables['environment'])]
-  - name: resourceGroupName
-    value: $[format('rg-{0}', variables['environment'])]
-  - name: devFunctionAppName
-    value: 'devbestrongfuncapp1'
-  - name: devResourceGroupName
-    value: 'rg-dev'
+  PIP_CACHE_DIR: $(Pipeline.Workspace)/.pip-cache
+  functionAppName: 'bestrong-app'
+  pythonVersion: '3.9'
+  environment: 'prod'  # Значення буде змінено в Azure DevOps
+  resourceGroupName: $[format('rg-{0}', variables['environment'])]
+  devFunctionAppName: 'devbestrongfuncapp1'
+  devResourceGroupName: 'rg-dev'
 
 stages:
-- stage: Build
-  displayName: 'Build'
-  jobs:
-  - job: Build
-    displayName: 'Build'
-    steps:
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: '$(pythonVersion)'
-        addToPath: true
+  - stage: Build
+    displayName: 'Build and Test'
+    jobs:
+      - job: BuildAndTest
+        displayName: 'Build and Test'
+        steps:
+          - task: UsePythonVersion@0
+            inputs:
+              versionSpec: '$(pythonVersion)'
+              addToPath: true
+            displayName: 'Use Python $(pythonVersion)'
 
-    - script: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-      displayName: 'Install dependencies'
+          - task: Cache@2
+            inputs:
+              key: 'pip | "$(Agent.OS)" | **/requirements.txt'
+              restoreKeys: |
+                pip | "$(Agent.OS)"
+              path: $(PIP_CACHE_DIR)
+            displayName: Cache pip packages
 
-    - task: ArchiveFiles@2
-      inputs:
-        rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
-        includeRootFolder: false
-        archiveType: 'zip'
-        archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
-        replaceExistingArchive: true
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -r requirements.txt
+            displayName: 'Install dependencies'
+            condition: ne(variables['CacheRestored'], 'true')
 
-    - task: PublishBuildArtifacts@1
-      inputs:
-        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-        ArtifactName: 'drop'
-        publishLocation: 'Container'
+          - script: |
+              python -m pytest tests/ -v
+            displayName: 'Run tests'
+
+          - task: ArchiveFiles@2
+            inputs:
+              rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
+              includeRootFolder: false
+              archiveType: 'zip'
+              archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+              replaceExistingArchive: true
+            displayName: 'Archive files'
+
+          - task: AzureFunctionApp@1
+            inputs:
+              azureSubscription: 'your-subscription'
+              appName: '$(functionAppName)'
+              package: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+            displayName: 'Deploy to Azure Functions'
+
+          - task: AzureCLI@2
+            inputs:
+              azureSubscription: 'your-subscription'
+              scriptType: 'bash'
+              scriptLocation: 'inlineScript'
+              inlineScript: |
+                echo "Checking deployment status..."
+                az functionapp show --name $(functionAppName) --resource-group $(resourceGroupName) --query "state"
+            displayName: 'Verify deployment status'
 
 - stage: DeployDev
   displayName: 'Deploy to Dev'
@@ -150,4 +162,7 @@ stages:
                   WEBSITE_RUN_FROM_PACKAGE="1"
                 
                 echo "Verifying settings:"
-                az functionapp config appsettings list --name $(functionAppName) --resource-group $(resourceGroupName) 
+                az functionapp config appsettings list --name $(functionAppName) --resource-group $(resourceGroupName)
+                
+                echo "Checking specific settings:"
+                az functionapp config appsettings list --name $(functionAppName) --resource-group $(resourceGroupName) --query "[?contains(name, 'FormRecognizer') || contains(name, 'BlobStorage') || contains(name, 'Discord') || contains(name, 'Slack')].{Name:name, Value:value}" -o table 

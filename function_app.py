@@ -162,6 +162,13 @@ def extract_structured_data(content: str) -> dict:
 @app.route(route="process-pdf", auth_level=func.AuthLevel.FUNCTION)
 def process_pdf(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('Python HTTP trigger function processed a request.')
+    
+    # Логування змінних середовища
+    logging.info('Environment variables:')
+    logging.info(f'FormRecognizerKey exists: {bool(os.environ.get("FormRecognizerKey"))}')
+    logging.info(f'BlobStorageConnectionString exists: {bool(os.environ.get("BlobStorageConnectionString"))}')
+    logging.info(f'DiscordWebhookUrl exists: {bool(os.environ.get("DiscordWebhookUrl"))}')
+    logging.info(f'SlackWebhookUrl exists: {bool(os.environ.get("SlackWebhookUrl"))}')
 
     try:
         file_share_connection_string = os.environ["FileShareConnectionString"]
