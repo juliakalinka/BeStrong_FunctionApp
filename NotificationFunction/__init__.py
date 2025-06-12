@@ -3,6 +3,7 @@ import logging
 import json
 import os
 import urllib.request
+# Using only urllib.request for both Discord and Slack
 
 # Add this line at the start of the file
 logging.getLogger().setLevel(logging.DEBUG)
@@ -64,7 +65,7 @@ def send_slack_notification(message: str):
             logging.info(f"Slack response status: {response.status}")
             logging.info(f"Slack response body: {response_body}")
             
-            if response.status == 200:
+            if response.status == 200:  # Slack webhook success returns 200 OK
                 logging.info("Slack notification sent successfully")
                 return True
             else:
@@ -87,7 +88,7 @@ def main(myblob: func.InputStream) -> None:
     Implements: "create push notifications when the result JSON file is dropped into the Azure Blob Storage"
     """
     try:
-        logging.info(f'🔔 Blob trigger activated')
+        logging.info(f'Blob trigger activated')
         logging.info(f'Blob name: {myblob.name}')
         logging.info(f'Blob URI: {myblob.uri if hasattr(myblob, "uri") else "Not available"}')
         logging.info(f'Blob size: {myblob.length} bytes')
@@ -120,7 +121,7 @@ def main(myblob: func.InputStream) -> None:
         logging.info(f'Extracted metadata - File: {original_file}, Pages: {page_count}, Text length: {text_length}')
         
         # Create notification message
-        notification_message = f"""📄 PDF OCR Processing Complete
+        notification_message = f"""PDF OCR Processing Complete
 
 **File:** {original_file}
 **Text extracted:** {text_length} characters
@@ -137,11 +138,11 @@ def main(myblob: func.InputStream) -> None:
         slack_result = send_slack_notification(notification_message)
         
         if discord_result and slack_result:
-            logging.info('✅ All notifications sent successfully')
+            logging.info('All notifications sent successfully')
         elif discord_result or slack_result:
-            logging.warning('⚠️ Some notifications sent successfully')
+            logging.warning('Some notifications sent successfully')
         else:
-            logging.error('❌ All notifications failed to send')
+            logging.error('All notifications failed to send')
             
     except Exception as e:
         logging.error(f'Error in notification function: {str(e)}', exc_info=True)
