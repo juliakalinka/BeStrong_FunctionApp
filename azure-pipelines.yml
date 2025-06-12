@@ -3,29 +3,16 @@ trigger:
     include:
     - main
     - develop
-  paths:
-    include:
-    - '**/*.py'
-    - 'requirements.txt'
-    - 'host.json'
-    - 'local.settings.json'
 
 pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  - name: pythonVersion
-    value: '3.9'
-  - name: environment
-    value: 'prod'  # or dev
-  - name: functionAppName
-    value: $[format('{0}bestrongfuncapp1', variables['environment'])]
-  - name: resourceGroupName
-    value: $[format('rg-{0}', variables['environment'])]
-  - name: devFunctionAppName
-    value: 'devbestrongfuncapp1'
-  - name: devResourceGroupName
-    value: 'rg-dev'
+  pythonVersion: '3.9'
+  functionAppNameProd: 'prodbestrongfuncapp1'
+  functionAppNameDev: 'devbestrongfuncapp1'
+  resourceGroupProd: 'rg-prod'
+  resourceGroupDev: 'rg-dev'
 
 stages:
 - stage: Build
@@ -37,41 +24,24 @@ stages:
     - task: UsePythonVersion@0
       inputs:
         versionSpec: '$(pythonVersion)'
-        addToPath: true
 
     - script: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install -r requirements.txt --target .python_packages/lib/site-packages
       displayName: 'Install dependencies'
 
-    - script: |
-        echo "Preparing files for deployment..."
-        mkdir $(Build.ArtifactStagingDirectory)/function_package
-        cp function_app.py $(Build.ArtifactStagingDirectory)/function_package/
-        cp host.json $(Build.ArtifactStagingDirectory)/function_package/
-        cp requirements.txt $(Build.ArtifactStagingDirectory)/function_package/
-        echo "Files copied to package directory"
-        ls -la $(Build.ArtifactStagingDirectory)/function_package/
-      displayName: 'Prepare Function Package'
-
     - task: ArchiveFiles@2
+      displayName: 'Archive files'
       inputs:
-        rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/function_package'
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
         includeRootFolder: false
-        archiveType: 'zip'
-        archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+        archiveType: zip
+        archiveFile: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
         replaceExistingArchive: true
+        verbose: true
 
-    - script: |
-        echo "Verifying archive contents..."
-        unzip -l $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
-      displayName: 'Verify Archive Contents'
-
-    - task: PublishBuildArtifacts@1
-      inputs:
-        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
-        ArtifactName: 'drop'
-        publishLocation: 'Container'
+    - publish: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
+      artifact: drop
 
 - stage: DeployDev
   displayName: 'Deploy to Dev'
@@ -85,84 +55,70 @@ stages:
         deploy:
           steps:
           - task: AzureFunctionApp@1
+            displayName: 'Deploy Azure Function'
             inputs:
               azureSubscription: 'bestrong-arm'
-              appName: '$(devFunctionAppName)'
+              appType: 'functionApp'
+              appName: '$(functionAppNameDev)'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
-              deploymentMethod: 'auto'
-
-          - script: |
-              echo "Checking environment variables:"
-              echo "FileShareConnectionString exists: $([ ! -z \"$(FileShareConnectionString)\" ] && echo 'yes' || echo 'no')"
-              echo "FormRecognizerEndpoint exists: $([ ! -z \"$(FormRecognizerEndpoint)\" ] && echo 'yes' || echo 'no')"
-              echo "FormRecognizerKey exists: $([ ! -z \"$(FormRecognizerKey)\" ] && echo 'yes' || echo 'no')"
-              echo "BlobStorageConnectionString exists: $([ ! -z \"$(BlobStorageConnectionString)\" ] && echo 'yes' || echo 'no')"
-              echo "DiscordWebhookUrl exists: $([ ! -z \"$(DiscordWebhookUrl)\" ] && echo 'yes' || echo 'no')"
-              echo "SlackWebhookUrl exists: $([ ! -z \"$(SlackWebhookUrl)\" ] && echo 'yes' || echo 'no')"
-            displayName: 'Check Variables'
+              runtimeStack: 'PYTHON|3.9'
 
           - task: AzureCLI@2
+            displayName: 'Configure App Settings'
             inputs:
               azureSubscription: 'bestrong-arm'
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
-                echo "Setting app settings for function app $(devFunctionAppName) in resource group $(devResourceGroupName)"
-                az functionapp config appsettings set --name $(devFunctionAppName) --resource-group $(devResourceGroupName) --settings \
-                  FileShareConnectionString="$(FileShareConnectionString)" \
-                  FormRecognizerEndpoint="$(FormRecognizerEndpoint)" \
-                  FormRecognizerKey="$(FormRecognizerKey)" \
-                  BlobStorageConnectionString="$(BlobStorageConnectionString)" \
-                  DiscordWebhookUrl="$(DiscordWebhookUrl)" \
-                  SlackWebhookUrl="$(SlackWebhookUrl)" \
-                  WEBSITE_RUN_FROM_PACKAGE="1"
-                
-                echo "Verifying settings:"
-                az functionapp config appsettings list --name $(devFunctionAppName) --resource-group $(devResourceGroupName)
+                az functionapp config appsettings set \
+                  --name $(functionAppNameDev) \
+                  --resource-group $(resourceGroupDev) \
+                  --settings \
+                    FUNCTIONS_WORKER_RUNTIME=python \
+                    WEBSITE_RUN_FROM_PACKAGE=1 \
+                    FileShareConnectionString="$(FileShareConnectionString)" \
+                    FormRecognizerEndpoint="$(FormRecognizerEndpoint)" \
+                    FormRecognizerKey="$(FormRecognizerKey)" \
+                    BlobStorageConnectionString="$(BlobStorageConnectionString)" \
+                    DiscordWebhookUrl="$(DiscordWebhookUrl)" \
+                    SlackWebhookUrl="$(SlackWebhookUrl)"
 
 - stage: DeployProd
   displayName: 'Deploy to Production'
   dependsOn: Build
   condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
   jobs:
-  - deployment: DeployToProduction
+  - deployment: DeployToProd
     environment: 'production'
     strategy:
       runOnce:
         deploy:
           steps:
           - task: AzureFunctionApp@1
+            displayName: 'Deploy Azure Function'
             inputs:
               azureSubscription: 'bestrong-arm'
-              appName: '$(functionAppName)'
+              appType: 'functionApp'
+              appName: '$(functionAppNameProd)'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
-              deploymentMethod: 'auto'
-
-          - script: |
-              echo "Checking environment variables:"
-              echo "FileShareConnectionString exists: $([ ! -z \"$(FileShareConnectionString)\" ] && echo 'yes' || echo 'no')"
-              echo "FormRecognizerEndpoint exists: $([ ! -z \"$(FormRecognizerEndpoint)\" ] && echo 'yes' || echo 'no')"
-              echo "FormRecognizerKey exists: $([ ! -z \"$(FormRecognizerKey)\" ] && echo 'yes' || echo 'no')"
-              echo "BlobStorageConnectionString exists: $([ ! -z \"$(BlobStorageConnectionString)\" ] && echo 'yes' || echo 'no')"
-              echo "DiscordWebhookUrl exists: $([ ! -z \"$(DiscordWebhookUrl)\" ] && echo 'yes' || echo 'no')"
-              echo "SlackWebhookUrl exists: $([ ! -z \"$(SlackWebhookUrl)\" ] && echo 'yes' || echo 'no')"
-            displayName: 'Check Variables'
+              runtimeStack: 'PYTHON|3.9'
 
           - task: AzureCLI@2
+            displayName: 'Configure App Settings'
             inputs:
               azureSubscription: 'bestrong-arm'
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
-                echo "Setting app settings for function app $(functionAppName) in resource group $(resourceGroupName)"
-                az functionapp config appsettings set --name $(functionAppName) --resource-group $(resourceGroupName) --settings \
-                  FileShareConnectionString="$(FileShareConnectionString)" \
-                  FormRecognizerEndpoint="$(FormRecognizerEndpoint)" \
-                  FormRecognizerKey="$(FormRecognizerKey)" \
-                  BlobStorageConnectionString="$(BlobStorageConnectionString)" \
-                  DiscordWebhookUrl="$(DiscordWebhookUrl)" \
-                  SlackWebhookUrl="$(SlackWebhookUrl)" \
-                  WEBSITE_RUN_FROM_PACKAGE="1"
-                
-                echo "Verifying settings:"
-                az functionapp config appsettings list --name $(functionAppName) --resource-group $(resourceGroupName) 
+                az functionapp config appsettings set \
+                  --name $(functionAppNameProd) \
+                  --resource-group $(resourceGroupProd) \
+                  --settings \
+                    FUNCTIONS_WORKER_RUNTIME=python \
+                    WEBSITE_RUN_FROM_PACKAGE=1 \
+                    FileShareConnectionString="$(FileShareConnectionString)" \
+                    FormRecognizerEndpoint="$(FormRecognizerEndpoint)" \
+                    FormRecognizerKey="$(FormRecognizerKey)" \
+                    BlobStorageConnectionString="$(BlobStorageConnectionString)" \
+                    DiscordWebhookUrl="$(DiscordWebhookUrl)" \
+                    SlackWebhookUrl="$(SlackWebhookUrl)" 
