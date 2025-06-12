@@ -9,8 +9,8 @@ import tempfile
 import urllib.request
 import urllib.parse
 
-# Testing with fixed versions - temporarily commented out
-# from azure.core.credentials import AzureKeyCredential
+# Step 2: Testing AzureKeyCredential with correct versions
+from azure.core.credentials import AzureKeyCredential
 # from azure.storage.blob import BlobServiceClient
 # from azure.storage.fileshare import ShareServiceClient
 # from azure.ai.formrecognizer import DocumentAnalysisClient
@@ -50,13 +50,17 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(f"Initialization error: {str(e)}", status_code=500)
 
     try:
-        logging.info('Testing with fixed package versions')
+        logging.info('Testing AzureKeyCredential with correct versions')
+        
+        # Test AzureKeyCredential creation
+        test_key = AzureKeyCredential("dummy_test_key")
         
         test_result = {
-            "status": "test_fixed_versions",
+            "status": "test_azure_key_credential",
             "file_name": file_name,
             "timestamp": datetime.utcnow().isoformat(),
-            "message": "Testing with azure-core==1.29.5 and specific versions"
+            "message": "AzureKeyCredential works with azure-core==1.29.5!",
+            "credential_created": "success"
         }
         
         logging.info('Basic test completed successfully')
