@@ -2,7 +2,8 @@
 # The Python Worker is managed by the Azure Functions platform
 # Manually managing azure-functions-worker may cause unexpected issues
 
-azure-functions
-azure-storage-blob
-azure-storage-file-share
-azure-ai-formrecognizer
+azure-functions==1.18.0
+azure-core==1.29.5
+azure-storage-blob==12.19.0
+azure-storage-file-share==12.15.0
+azure-ai-formrecognizer==3.3.0
