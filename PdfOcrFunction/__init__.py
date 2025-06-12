@@ -62,18 +62,24 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         form_recognizer_endpoint = os.environ["FormRecognizerEndpoint"]
         form_recognizer_key = os.environ["FormRecognizerKey"]
         
-        # Extract storage account info from connection string
-        # Format: DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net
-        storage_account_name = file_share_conn.split('AccountName=')[1].split(';')[0]
-        storage_account_key = file_share_conn.split('AccountKey=')[1].split(';')[0]
+        # Extract storage account info from connection strings
+        # File Share connection
+        fs_storage_account_name = file_share_conn.split('AccountName=')[1].split(';')[0]
+        fs_storage_account_key = file_share_conn.split('AccountKey=')[1].split(';')[0]
         
-        logging.info(f'Parsed storage account: {storage_account_name}')
-        logging.info(f'Key length: {len(storage_account_key)} chars')
+        # Blob Storage connection (may be different account)
+        blob_storage_account_name = blob_conn.split('AccountName=')[1].split(';')[0]
+        blob_storage_account_key = blob_conn.split('AccountKey=')[1].split(';')[0]
+        
+        logging.info(f'Parsed File Share account: {fs_storage_account_name}')
+        logging.info(f'Parsed Blob Storage account: {blob_storage_account_name}')
+        logging.info(f'FS Key length: {len(fs_storage_account_key)} chars')
+        logging.info(f'Blob Key length: {len(blob_storage_account_key)} chars')
         
         # Step 1: Download PDF from File Share using REST API
         # URL encode the file name to handle spaces and special characters
         encoded_file_name = urllib.parse.quote(file_name)
-        file_share_url = f"https://{storage_account_name}.file.core.windows.net/myshare/{encoded_file_name}"
+        file_share_url = f"https://{fs_storage_account_name}.file.core.windows.net/myshare/{encoded_file_name}"
         
         # Create authorization header for File Share
         from datetime import timezone
@@ -81,25 +87,25 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         utc_now = datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')
         
         # Canonical resource for File Share: /{account}/{share}/{file_path}
-        canonical_resource = f"/{storage_account_name}/myshare/{encoded_file_name}"
+        fs_canonical_resource = f"/{fs_storage_account_name}/myshare/{encoded_file_name}"
         
         # String to sign format for File Share REST API
-        string_to_sign = f"GET\n\n\n\n\n\n\n\n\n\n\n\nx-ms-date:{utc_now}\nx-ms-version:2020-12-06\n{canonical_resource}"
+        fs_string_to_sign = f"GET\n\n\n\n\n\n\n\n\n\n\n\nx-ms-date:{utc_now}\nx-ms-version:2020-12-06\n{fs_canonical_resource}"
         
-        key = base64.b64decode(storage_account_key)
-        signature = base64.b64encode(hmac.new(key, string_to_sign.encode('utf-8'), hashlib.sha256).digest()).decode()
+        fs_key = base64.b64decode(fs_storage_account_key)
+        fs_signature = base64.b64encode(hmac.new(fs_key, fs_string_to_sign.encode('utf-8'), hashlib.sha256).digest()).decode()
         
         # Debug logging
-        logging.info(f'Account: {storage_account_name}')
+        logging.info(f'FS Account: {fs_storage_account_name}')
         logging.info(f'UTC Date: {utc_now}')
         logging.info(f'File Share URL: {file_share_url}')
-        logging.info(f'String to sign: {repr(string_to_sign)}')
-        logging.info(f'Signature: {signature}')
+        logging.info(f'FS String to sign: {repr(fs_string_to_sign)}')
+        logging.info(f'FS Signature: {fs_signature}')
         
         headers = {
             'x-ms-date': utc_now,
             'x-ms-version': '2020-12-06',
-            'Authorization': f'SharedKey {storage_account_name}:{signature}'
+            'Authorization': f'SharedKey {fs_storage_account_name}:{fs_signature}'
         }
         
         # Download file
@@ -164,32 +170,50 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # Step 4: Upload to Blob Storage using REST API
         blob_name = f"{os.path.splitext(file_name)[0]}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
         encoded_blob_name = urllib.parse.quote(blob_name)
-        blob_url = f"https://{storage_account_name}.blob.core.windows.net/mycontainer/{encoded_blob_name}"
+        blob_url = f"https://{blob_storage_account_name}.blob.core.windows.net/mycontainer/{encoded_blob_name}"
         
         json_data = json.dumps(json_result).encode('utf-8')
         
         # Create authorization for Blob Storage
-        utc_now = datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')
+        blob_utc_now = datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')
         content_length = str(len(json_data))
         
         # Canonical resource for Blob Storage: /{account}/{container}/{blob}
-        blob_canonical_resource = f"/{storage_account_name}/mycontainer/{encoded_blob_name}"
+        blob_canonical_resource = f"/{blob_storage_account_name}/mycontainer/{encoded_blob_name}"
         
-        blob_string_to_sign = f"PUT\n\n\napplication/json\n\n\n\n\n\n\n\n\nx-ms-blob-type:BlockBlob\nx-ms-date:{utc_now}\nx-ms-version:2020-12-06\n{blob_canonical_resource}"
+        # Correct string_to_sign format for Blob Storage PUT operation
+        # Format: VERB\n\n\nContent-Length\n\nContent-Type\n\n\n\n\n\n\nx-ms-*headers\nCanonicalizedResource
+        blob_string_to_sign = f"PUT\n\n\n{content_length}\n\napplication/json\n\n\n\n\n\n\nx-ms-blob-type:BlockBlob\nx-ms-date:{blob_utc_now}\nx-ms-version:2020-12-06\n{blob_canonical_resource}"
         
-        blob_signature = base64.b64encode(hmac.new(key, blob_string_to_sign.encode('utf-8'), hashlib.sha256).digest()).decode()
+        blob_key = base64.b64decode(blob_storage_account_key)
+        blob_signature = base64.b64encode(hmac.new(blob_key, blob_string_to_sign.encode('utf-8'), hashlib.sha256).digest()).decode()
+        
+        # Debug logging for Blob Storage
+        logging.info(f'Blob Account: {blob_storage_account_name}')
+        logging.info(f'Blob URL: {blob_url}')
+        logging.info(f'Content Length: {content_length}')
+        logging.info(f'Blob String to sign: {repr(blob_string_to_sign)}')
+        logging.info(f'Blob Signature: {blob_signature}')
         
         blob_headers = {
-            'x-ms-date': utc_now,
+            'x-ms-date': blob_utc_now,
             'x-ms-version': '2020-12-06',
             'x-ms-blob-type': 'BlockBlob',
             'Content-Type': 'application/json',
             'Content-Length': content_length,
-            'Authorization': f'SharedKey {storage_account_name}:{blob_signature}'
+            'Authorization': f'SharedKey {blob_storage_account_name}:{blob_signature}'
         }
         
         blob_request = urllib.request.Request(blob_url, data=json_data, headers=blob_headers, method='PUT')
-        urllib.request.urlopen(blob_request)
+        
+        try:
+            urllib.request.urlopen(blob_request)
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode() if hasattr(e, 'read') else 'No error body'
+            logging.error(f'Blob Storage HTTP Error {e.code}: {e.reason}')
+            logging.error(f'Blob error body: {error_body}')
+            logging.error(f'Blob headers sent: {blob_headers}')
+            raise Exception(f'Blob Storage auth error {e.code}: {e.reason} - {error_body}')
         
         logging.info(f'JSON uploaded to blob: {blob_name}')
         
