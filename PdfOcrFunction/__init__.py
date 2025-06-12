@@ -4,9 +4,9 @@ import os
 import json
 from datetime import datetime
 
-# Adding back basic Python modules first
+# Testing tempfile only
 import tempfile  
-import requests
+# import requests  # Commented for testing
 
 # Still commented - will add one by one
 # from azure.storage.blob import BlobServiceClient
