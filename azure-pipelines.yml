@@ -61,10 +61,15 @@ stages:
           cp -r .python_packages $(Build.ArtifactStagingDirectory)/function_app/
         fi
         
-        # Create simple build info file
-        echo "Build ID: $(Build.BuildId)" > $(Build.ArtifactStagingDirectory)/function_app/build_info.txt
-        echo "Build Number: $(Build.BuildNumber)" >> $(Build.ArtifactStagingDirectory)/function_app/build_info.txt
-        echo "Source Branch: $(Build.SourceBranch)" >> $(Build.ArtifactStagingDirectory)/function_app/build_info.txt
+        # Create metadata file
+        echo "{
+          \"build_id\": \"$(Build.BuildId)\",
+          \"build_number\": \"$(Build.BuildNumber)\",
+          \"source_branch\": \"$(Build.SourceBranch)\",
+          \"source_version\": \"$(Build.SourceVersion)\",
+          \"build_date\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+          \"agent_name\": \"$(Agent.Name)\"
+        }" > $(Build.ArtifactStagingDirectory)/function_app/build_info.json
         
         echo "Package contents:"
         ls -la $(Build.ArtifactStagingDirectory)/function_app/
@@ -134,7 +139,7 @@ stages:
               appType: 'functionApp'
               appName: '$(functionAppNameDev)'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
-              deploymentMethod: 'runFromPackage'
+              deploymentMethod: 'zipDeploy'
 
           - task: AzureCLI@2
             displayName: 'Configure Dev App Settings'
@@ -223,12 +228,6 @@ stages:
                 --resource-group $(resourceGroupProd) \
                 --query "{name:name,state:state,kind:kind,runtimeVersion:siteConfig.linuxFxVersion}" \
                 --output table || echo "Function App not accessible or doesn't exist"
-              
-              echo "Verifying deployment package..."
-              unzip -l $(Pipeline.Workspace)/drop/$(Build.BuildId).zip | head -20
-              
-              echo "Package size:"
-              ls -lh $(Pipeline.Workspace)/drop/$(Build.BuildId).zip
             displayName: 'Pre-Deploy Production Status'
             
           - task: AzureFunctionApp@1
@@ -238,7 +237,7 @@ stages:
               appType: 'functionApp'
               appName: '$(functionAppNameProd)'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
-              deploymentMethod: 'runFromPackage'
+              deploymentMethod: 'zipDeploy'
 
           - task: AzureCLI@2
             displayName: 'Configure Production App Settings'
