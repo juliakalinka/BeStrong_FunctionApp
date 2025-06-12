@@ -2,6 +2,7 @@ trigger:
   branches:
     include:
       - main
+      - develop
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -55,43 +56,57 @@ stages:
       runOnce:
         deploy:
           steps:
+          - bash: |
+              if [[ "$(Build.SourceBranch)" == "refs/heads/main" ]]; then
+                echo "##vso[task.setvariable variable=targetAppName]$(functionAppNameProd)"
+                echo "##vso[task.setvariable variable=targetResourceGroup]$(resourceGroupProd)"
+              else
+                echo "##vso[task.setvariable variable=targetAppName]$(functionAppNameDev)"
+                echo "##vso[task.setvariable variable=targetResourceGroup]$(resourceGroupDev)"
+              fi
+            displayName: 'Select deployment target'
+
           - task: AzureCLI@2
             inputs:
               azureSubscription: 'bestrong-arm'
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
-                if [ "$(Build.SourceBranch)" = "refs/heads/main" ]; then
-                  APP_NAME=$(functionAppNameProd)
-                  RG_NAME=$(resourceGroupProd)
-                else
-                  APP_NAME=$(functionAppNameDev)
-                  RG_NAME=$(resourceGroupDev)
-                fi
-
-                echo "Deploying to Function App: $APP_NAME"
-
+                echo "Setting Python runtime for app: $(targetAppName)"
                 az functionapp config set \
-                  --name $APP_NAME \
-                  --resource-group $RG_NAME \
+                  --name $(targetAppName) \
+                  --resource-group $(targetResourceGroup) \
                   --linux-fx-version "Python|3.9"
+            displayName: 'Ensure Python Runtime'
 
           - task: AzureFunctionApp@1
             inputs:
               azureSubscription: 'bestrong-arm'
               appType: 'functionAppLinux'
-              appName: '$(if $(Build.SourceBranch) == refs/heads/main) $(functionAppNameProd) $(functionAppNameDev)'
+              appName: '$(targetAppName)'
               package: '$(Pipeline.Workspace)/function-package/function-app.zip'
               deploymentMethod: 'auto'
-              appSettings: '-FUNCTIONS_WORKER_RUNTIME python -FUNCTIONS_EXTENSION_VERSION ~4 -FileShareConnectionString "$(FileShareConnectionString)" -FormRecognizerEndpoint "$(FormRecognizerEndpoint)" -FormRecognizerKey "$(FormRecognizerKey)" -BlobStorageConnectionString "$(BlobStorageConnectionString)" -DiscordWebhookUrl "$(DiscordWebhookUrl)" -SlackWebhookUrl "$(SlackWebhookUrl)"'
+              appSettings: |
+                -FUNCTIONS_WORKER_RUNTIME python
+                -FUNCTIONS_EXTENSION_VERSION ~4
+                -FileShareConnectionString "$(FileShareConnectionString)"
+                -FormRecognizerEndpoint "$(FormRecognizerEndpoint)"
+                -FormRecognizerKey "$(FormRecognizerKey)"
+                -BlobStorageConnectionString "$(BlobStorageConnectionString)"
+                -DiscordWebhookUrl "$(DiscordWebhookUrl)"
+                -SlackWebhookUrl "$(SlackWebhookUrl)"
+                -ENVIRONMENT $(Build.SourceBranchName)
+                -BUILD_ID $(Build.BuildId)
+            displayName: 'Deploy Azure Function'
 
           - script: |
-              echo "Notifying deployment success."
+              echo "Notifying deployment success..."
               curl -X POST -H 'Content-type: application/json' \
-                --data "{\"content\":\"Deployment completed: $(Build.SourceBranchName)\"}" \
+                --data "{\"content\":\"Deployment completed to $(targetAppName)\"}" \
                 "$(DiscordWebhookUrl)"
 
               curl -X POST -H 'Content-type: application/json' \
-                --data "{\"text\":\"Deployment completed: $(Build.SourceBranchName)\"}" \
+                --data "{\"text\":\"Deployment completed to $(targetAppName)\"}" \
                 "$(SlackWebhookUrl)"
+            displayName: 'Notify via Discord and Slack'
             condition: always()
