@@ -170,7 +170,7 @@ stages:
               sleep 30
               
               echo "Testing health endpoint..."
-              HEALTH_URL="https://$(functionAppNameDev).azurewebsites.net/api/PdfOcrFunction?name=healthcheck"
+              HEALTH_URL="https://$(functionAppNameDev).azurewebsites.net/api/health"
               
               # Try to call health endpoint
               for i in {1..5}; do
@@ -268,7 +268,7 @@ stages:
               sleep 60
               
               echo "Testing production health endpoint..."
-              HEALTH_URL="https://$(functionAppNameProd).azurewebsites.net/api/PdfOcrFunction?name=healthcheck"
+              HEALTH_URL="https://$(functionAppNameProd).azurewebsites.net/api/health"
               
               # Try to call health endpoint
               for i in {1..10}; do
