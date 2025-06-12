@@ -1,5 +1,13 @@
 trigger:
-  - main
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - '**/*.py'
+      - 'requirements.txt'
+      - 'host.json'
+      - 'local.settings.json'
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -8,7 +16,7 @@ variables:
   PIP_CACHE_DIR: $(Pipeline.Workspace)/.pip-cache
   functionAppName: 'bestrong-app'
   pythonVersion: '3.9'
-  environment: 'prod'  # Значення буде змінено в Azure DevOps
+  environment: 'prod'  # or dev
   resourceGroupName: $[format('rg-{0}', variables['environment'])]
   devFunctionAppName: 'devbestrongfuncapp1'
   devResourceGroupName: 'rg-dev'
