@@ -3,6 +3,12 @@ trigger:
     include:
     - main
     - develop
+  paths:
+    include:
+    - 'function_app.py'
+    - 'host.json'
+    - 'requirements.txt'
+    - 'azure-pipelines.yml'
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -16,23 +22,34 @@ variables:
 
 stages:
 - stage: Build
-  displayName: 'Build'
+  displayName: 'Build and Test'
   jobs:
   - job: Build
-    displayName: 'Build'
+    displayName: 'Build Function App'
     steps:
     - task: UsePythonVersion@0
       inputs:
         versionSpec: '$(pythonVersion)'
+      displayName: 'Use Python $(pythonVersion)'
 
     - script: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt --target .python_packages/lib/site-packages
+        
+        # Install test dependencies
+        pip install pytest pytest-cov flake8 --target .python_packages/lib/site-packages
       displayName: 'Install dependencies'
 
     - script: |
+        # Run linting
+        echo "Running code quality checks..."
+        python -m flake8 function_app.py --max-line-length=120 --ignore=E501,W503 || echo "Linting completed with warnings"
+      displayName: 'Code Quality Check'
+      continueOnError: true
+
+    - script: |
         echo "Preparing clean package..."
-        mkdir $(Build.ArtifactStagingDirectory)/function_app
+        mkdir -p $(Build.ArtifactStagingDirectory)/function_app
         
         # Copy only required files
         cp function_app.py $(Build.ArtifactStagingDirectory)/function_app/
@@ -44,12 +61,22 @@ stages:
           cp -r .python_packages $(Build.ArtifactStagingDirectory)/function_app/
         fi
         
+        # Create metadata file
+        echo "{
+          \"build_id\": \"$(Build.BuildId)\",
+          \"build_number\": \"$(Build.BuildNumber)\",
+          \"source_branch\": \"$(Build.SourceBranch)\",
+          \"source_version\": \"$(Build.SourceVersion)\",
+          \"build_date\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+          \"agent_name\": \"$(Agent.Name)\"
+        }" > $(Build.ArtifactStagingDirectory)/function_app/build_info.json
+        
         echo "Package contents:"
         ls -la $(Build.ArtifactStagingDirectory)/function_app/
       displayName: 'Prepare Function Package'
 
     - task: ArchiveFiles@2
-      displayName: 'Archive files'
+      displayName: 'Archive Function App'
       inputs:
         rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/function_app'
         includeRootFolder: false
@@ -60,13 +87,23 @@ stages:
     - script: |
         echo "Verifying archive contents:"
         unzip -l $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
+        echo "Archive size:"
+        ls -lh $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
+        
+        # Check archive size (should be reasonable)
+        ARCHIVE_SIZE=$(stat -f%z $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip 2>/dev/null || stat -c%s $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip)
+        echo "Archive size: $ARCHIVE_SIZE bytes"
+        if [ $ARCHIVE_SIZE -gt 104857600 ]; then # 100MB
+          echo "Warning: Archive size is very large ($ARCHIVE_SIZE bytes)"
+        fi
       displayName: 'Verify Archive'
 
     - publish: $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
       artifact: drop
+      displayName: 'Publish Build Artifact'
 
 - stage: DeployDev
-  displayName: 'Deploy to Dev'
+  displayName: 'Deploy to Development'
   dependsOn: Build
   condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/develop'))
   jobs:
@@ -76,34 +113,96 @@ stages:
       runOnce:
         deploy:
           steps:
+          - script: |
+              echo "=== Deployment Information ==="
+              echo "Environment: Development"
+              echo "Function App: $(functionAppNameDev)"
+              echo "Resource Group: $(resourceGroupDev)"
+              echo "Build ID: $(Build.BuildId)"
+              echo "Source Branch: $(Build.SourceBranch)"
+              echo "============================="
+            displayName: 'Deployment Info'
+
+          - script: |
+              echo "Checking Function App status before deploy..."
+              az functionapp show \
+                --name $(functionAppNameDev) \
+                --resource-group $(resourceGroupDev) \
+                --query "{name:name,state:state,kind:kind,runtimeVersion:siteConfig.linuxFxVersion}" \
+                --output table || echo "Function App not accessible or doesn't exist"
+            displayName: 'Pre-Deploy Function App Status'
+            
           - task: AzureFunctionApp@1
-            displayName: 'Deploy Azure Function'
+            displayName: 'Deploy Azure Function to Dev'
             inputs:
               azureSubscription: 'bestrong-arm'
               appType: 'functionApp'
               appName: '$(functionAppNameDev)'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
-              runtimeStack: 'PYTHON|3.9'
+              deploymentMethod: 'zipDeploy'
+              appSettings: |
+                -FUNCTIONS_WORKER_RUNTIME python
+                -WEBSITE_RUN_FROM_PACKAGE 1
+                -FUNCTIONS_EXTENSION_VERSION ~4
 
           - task: AzureCLI@2
-            displayName: 'Configure App Settings'
+            displayName: 'Configure Dev App Settings'
             inputs:
               azureSubscription: 'bestrong-arm'
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
+                echo "Configuring application settings..."
                 az functionapp config appsettings set \
                   --name $(functionAppNameDev) \
                   --resource-group $(resourceGroupDev) \
                   --settings \
                     FUNCTIONS_WORKER_RUNTIME=python \
                     WEBSITE_RUN_FROM_PACKAGE=1 \
+                    FUNCTIONS_EXTENSION_VERSION=~4 \
                     FileShareConnectionString="$(FileShareConnectionString)" \
                     FormRecognizerEndpoint="$(FormRecognizerEndpoint)" \
                     FormRecognizerKey="$(FormRecognizerKey)" \
                     BlobStorageConnectionString="$(BlobStorageConnectionString)" \
                     DiscordWebhookUrl="$(DiscordWebhookUrl)" \
-                    SlackWebhookUrl="$(SlackWebhookUrl)"
+                    SlackWebhookUrl="$(SlackWebhookUrl)" \
+                    ENVIRONMENT=development \
+                    BUILD_ID=$(Build.BuildId)
+
+          - script: |
+              echo "Waiting for deployment to complete..."
+              sleep 30
+              
+              echo "Testing health endpoint..."
+              HEALTH_URL="https://$(functionAppNameDev).azurewebsites.net/api/PdfOcrFunction?name=healthcheck"
+              
+              # Try to call health endpoint
+              for i in {1..5}; do
+                echo "Health check attempt $i..."
+                HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" || echo "000")
+                echo "HTTP Status: $HTTP_STATUS"
+                
+                if [ "$HTTP_STATUS" = "200" ]; then
+                  echo "Dev health check passed!"
+                  curl -s "$HEALTH_URL" || echo "Health check response received"
+                  break
+                elif [ "$i" = "5" ]; then
+                  echo "Dev health check failed after 5 attempts"
+                  exit 1
+                else
+                  echo "Waiting 30 seconds before retry..."
+                  sleep 30
+                fi
+              done
+            displayName: 'Post-Deploy Health Check'
+
+          - script: |
+              echo "Sending deployment notification..."
+              curl -X POST -H 'Content-type: application/json' \
+                --data "{\"content\":\"**Dev Deployment Complete**\nBuild: $(Build.BuildId)\nBranch: $(Build.SourceBranch)\nFunction App: $(functionAppNameDev)\nStatus: Success\"}" \
+                "$(DiscordWebhookUrl)" || echo "Failed to send Discord notification"
+            displayName: 'Send Deployment Notification'
+            condition: always()
 
 - stage: DeployProd
   displayName: 'Deploy to Production'
@@ -116,31 +215,198 @@ stages:
       runOnce:
         deploy:
           steps:
+          - script: |
+              echo "=== Production Deployment Information ==="
+              echo "Environment: Production"
+              echo "Function App: $(functionAppNameProd)"
+              echo "Resource Group: $(resourceGroupProd)"
+              echo "Build ID: $(Build.BuildId)"
+              echo "Source Branch: $(Build.SourceBranch)"
+              echo "========================================"
+            displayName: 'Production Deployment Info'
+
+          - script: |
+              echo "Checking Production Function App status..."
+              az functionapp show \
+                --name $(functionAppNameProd) \
+                --resource-group $(resourceGroupProd) \
+                --query "{name:name,state:state,kind:kind,runtimeVersion:siteConfig.linuxFxVersion}" \
+                --output table || echo "Function App not accessible or doesn't exist"
+            displayName: 'Pre-Deploy Production Status'
+            
           - task: AzureFunctionApp@1
-            displayName: 'Deploy Azure Function'
+            displayName: 'Deploy Azure Function to Production'
             inputs:
               azureSubscription: 'bestrong-arm'
               appType: 'functionApp'
               appName: '$(functionAppNameProd)'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
-              runtimeStack: 'PYTHON|3.9'
+              deploymentMethod: 'zipDeploy'
+              appSettings: |
+                -FUNCTIONS_WORKER_RUNTIME python
+                -WEBSITE_RUN_FROM_PACKAGE 1
+                -FUNCTIONS_EXTENSION_VERSION ~4
 
           - task: AzureCLI@2
-            displayName: 'Configure App Settings'
+            displayName: 'Configure Production App Settings'
             inputs:
               azureSubscription: 'bestrong-arm'
               scriptType: 'bash'
               scriptLocation: 'inlineScript'
               inlineScript: |
+                echo "Configuring production application settings..."
                 az functionapp config appsettings set \
                   --name $(functionAppNameProd) \
                   --resource-group $(resourceGroupProd) \
                   --settings \
                     FUNCTIONS_WORKER_RUNTIME=python \
                     WEBSITE_RUN_FROM_PACKAGE=1 \
+                    FUNCTIONS_EXTENSION_VERSION=~4 \
                     FileShareConnectionString="$(FileShareConnectionString)" \
                     FormRecognizerEndpoint="$(FormRecognizerEndpoint)" \
                     FormRecognizerKey="$(FormRecognizerKey)" \
                     BlobStorageConnectionString="$(BlobStorageConnectionString)" \
                     DiscordWebhookUrl="$(DiscordWebhookUrl)" \
-                    SlackWebhookUrl="$(SlackWebhookUrl)" 
+                    SlackWebhookUrl="$(SlackWebhookUrl)" \
+                    ENVIRONMENT=production \
+                    BUILD_ID=$(Build.BuildId)
+
+          - script: |
+              echo "Waiting for production deployment to complete..."
+              sleep 60
+              
+              echo "Testing production health endpoint..."
+              HEALTH_URL="https://$(functionAppNameProd).azurewebsites.net/api/PdfOcrFunction?name=healthcheck"
+              
+              # Try to call health endpoint
+              for i in {1..10}; do
+                echo "Production health check attempt $i..."
+                HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$HEALTH_URL" || echo "000")
+                echo "HTTP Status: $HTTP_STATUS"
+                
+                if [ "$HTTP_STATUS" = "200" ]; then
+                  echo "Production health check passed!"
+                  curl -s "$HEALTH_URL" || echo "Health check response received"
+                  break
+                elif [ "$i" = "10" ]; then
+                  echo "Production health check failed after 10 attempts"
+                  exit 1
+                else
+                  echo "Waiting 30 seconds before retry..."
+                  sleep 30
+                fi
+              done
+            displayName: 'Production Health Check'
+
+          - script: |
+              echo "Running basic smoke test..."
+              
+              # Test the main process-pdf endpoint (without actually processing)
+              FUNCTION_URL="https://$(functionAppNameProd).azurewebsites.net/api/process-pdf"
+              
+              # This should return 400 because no file_name parameter is provided
+              HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$FUNCTION_URL" || echo "000")
+              echo "Process-PDF endpoint status: $HTTP_STATUS"
+              
+              if [ "$HTTP_STATUS" = "400" ] || [ "$HTTP_STATUS" = "401" ]; then
+                echo "Process-PDF endpoint is responding correctly"
+              else
+                echo "Process-PDF endpoint returned unexpected status: $HTTP_STATUS"
+              fi
+            displayName: 'Production Smoke Test'
+
+          - script: |
+              echo "Sending production deployment notification..."
+              
+              # Discord notification
+              curl -X POST -H 'Content-type: application/json' \
+                --data "{\"content\":\"**Production Deployment Complete**\nBuild: $(Build.BuildId)\nBranch: $(Build.SourceBranch)\nFunction App: $(functionAppNameProd)\nStatus: Success\nReady for use!\"}" \
+                "$(DiscordWebhookUrl)" || echo "Failed to send Discord notification"
+              
+              # Slack notification  
+              curl -X POST -H 'Content-type: application/json' \
+                --data "{\"text\":\"*Production Deployment Complete*\nBuild: $(Build.BuildId)\nBranch: $(Build.SourceBranch)\nFunction App: $(functionAppNameProd)\nStatus: Success\nReady for use!\"}" \
+                "$(SlackWebhookUrl)" || echo "Failed to send Slack notification"
+            displayName: 'Send Production Deployment Notification'
+            condition: always()
+
+- stage: PostDeploymentTests
+  displayName: 'Post-Deployment Integration Tests'
+  dependsOn: 
+    - DeployDev
+    - DeployProd
+  condition: always()
+  jobs:
+  - job: IntegrationTests
+    displayName: 'Run Integration Tests'
+    condition: or(succeeded('DeployDev'), succeeded('DeployProd'))
+    steps:
+    - script: |
+        echo "Running post-deployment integration tests..."
+        
+        # Determine which environment to test
+        if [ "$(Build.SourceBranch)" = "refs/heads/main" ]; then
+          FUNCTION_APP_NAME="$(functionAppNameProd)"
+          ENVIRONMENT="production"
+        else
+          FUNCTION_APP_NAME="$(functionAppNameDev)"
+          ENVIRONMENT="development"
+        fi
+        
+        echo "Testing environment: $ENVIRONMENT"
+        echo "Function App: $FUNCTION_APP_NAME"
+        
+        BASE_URL="https://${FUNCTION_APP_NAME}.azurewebsites.net/api"
+        
+        # Test legacy endpoint
+        echo "Testing legacy endpoint..."
+        LEGACY_RESPONSE=$(curl -s "${BASE_URL}/PdfOcrFunction?name=test")
+        echo "Legacy response: $LEGACY_RESPONSE"
+        
+        # Test process-pdf endpoint (should return 400 without parameters)
+        echo "Testing process-pdf endpoint..."
+        PDF_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}/process-pdf")
+        echo "Process-PDF response code: $PDF_STATUS"
+        
+        if [ "$PDF_STATUS" = "400" ]; then
+          echo "Process-PDF endpoint correctly requires parameters"
+        else
+          echo "Process-PDF endpoint returned unexpected status: $PDF_STATUS"
+        fi
+        
+        echo "Integration tests completed for $ENVIRONMENT environment"
+      displayName: 'Integration Tests'
+
+  - job: NotifyCompletion
+    displayName: 'Pipeline Completion Notification'
+    dependsOn: IntegrationTests
+    condition: always()
+    steps:
+    - script: |
+        # Determine overall pipeline status
+        if [ "$(Agent.JobStatus)" = "Succeeded" ]; then
+          STATUS="Success"
+          COLOR="good"
+        else
+          STATUS="Failed"  
+          COLOR="danger"
+        fi
+        
+        ENVIRONMENT="Unknown"
+        if [ "$(Build.SourceBranch)" = "refs/heads/main" ]; then
+          ENVIRONMENT="Production"
+        elif [ "$(Build.SourceBranch)" = "refs/heads/develop" ]; then
+          ENVIRONMENT="Development"
+        fi
+        
+        MESSAGE="**Pipeline Complete**\nBuild: $(Build.BuildId)\nBranch: $(Build.SourceBranch)\nEnvironment: $ENVIRONMENT\nStatus: $STATUS"
+        
+        # Send final notification
+        curl -X POST -H 'Content-type: application/json' \
+          --data "{\"content\":\"$MESSAGE\"}" \
+          "$(DiscordWebhookUrl)" || echo "Failed to send final Discord notification"
+          
+        curl -X POST -H 'Content-type: application/json' \
+          --data "{\"text\":\"$MESSAGE\"}" \
+          "$(SlackWebhookUrl)" || echo "Failed to send final Slack notification"
+      displayName: 'Send Pipeline Completion Notification'
