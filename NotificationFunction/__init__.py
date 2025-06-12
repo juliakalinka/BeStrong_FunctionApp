@@ -7,51 +7,37 @@ import urllib.request
 # Add this line at the start of the file
 logging.getLogger().setLevel(logging.DEBUG)
 
-def send_discord_notification(message: str) -> bool:
-    """Send notification to Discord webhook"""
+def send_discord_notification(message: str):
     url = os.environ.get("DiscordWebhookUrl")
     if not url:
-        logging.error("Discord webhook URL not configured")
-        return False
-        
+        logging.error("Discord webhook URL not set")
+        return
     try:
         data = json.dumps({"content": message}).encode('utf-8')
         req = urllib.request.Request(url, data, {'Content-Type': 'application/json'})
-        response = urllib.request.urlopen(req, timeout=10)
-        
-        if response.status == 204:  # Discord returns 204 No Content on success
-            logging.info("Discord notification sent successfully")
-            return True
-        else:
-            logging.warning(f"Discord notification returned unexpected status: {response.status}")
-            return False
-            
+        with urllib.request.urlopen(req, timeout=10) as response:
+            if response.status == 204:  # Discord повертає 204 No Content при успіху
+                logging.info("Discord notification sent successfully")
+            else:
+                logging.warning(f"Discord notification returned status: {response.status}")
     except Exception as e:
-        logging.error(f"Discord notification failed: {str(e)}", exc_info=True)
-        return False
+        logging.error(f"Failed to send Discord notification: {e}")
 
-def send_slack_notification(message: str) -> bool:
-    """Send notification to Slack webhook"""
+def send_slack_notification(message: str):
     url = os.environ.get("SlackWebhookUrl")
     if not url:
-        logging.error("Slack webhook URL not configured")
-        return False
-        
+        logging.error("Slack webhook URL not set")
+        return
     try:
         data = json.dumps({"text": message}).encode('utf-8')
         req = urllib.request.Request(url, data, {'Content-Type': 'application/json'})
-        response = urllib.request.urlopen(req, timeout=10)
-        
-        if response.status == 200:  # Slack returns 200 OK on success
-            logging.info("Slack notification sent successfully")
-            return True
-        else:
-            logging.warning(f"Slack notification returned unexpected status: {response.status}")
-            return False
-            
+        with urllib.request.urlopen(req, timeout=10) as response:
+            if response.status == 200:  # Slack повертає 200 OK при успіху
+                logging.info("Slack notification sent successfully")
+            else:
+                logging.warning(f"Slack notification returned status: {response.status}")
     except Exception as e:
-        logging.error(f"Slack notification failed: {str(e)}", exc_info=True)
-        return False
+        logging.error(f"Failed to send Slack notification: {e}")
 
 def main(myblob: func.InputStream) -> None:
     """
