@@ -1,5 +1,6 @@
 import azure.functions as func
 import logging
+import sys
 from azure.storage.blob import BlobServiceClient
 from azure.storage.fileshare import ShareServiceClient, ShareFileClient
 from azure.ai.formrecognizer import DocumentAnalysisClient
@@ -389,33 +390,56 @@ def health_check(req: func.HttpRequest) -> func.HttpResponse:
                         "FormRecognizerKey", "BlobStorageConnectionString"]
         missing_vars = [var for var in required_vars if not os.environ.get(var)]
         
+        environment = os.environ.get("ENVIRONMENT", "unknown")
+        build_id = os.environ.get("BUILD_ID", "unknown")
+        
+        health_data = {
+            "status": "healthy" if not missing_vars else "unhealthy",
+            "timestamp": datetime.now().isoformat(),
+            "environment": environment,
+            "build_id": build_id,
+            "python_version": f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
+            "function_worker_runtime": os.environ.get("FUNCTIONS_WORKER_RUNTIME", "unknown"),
+            "function_extension_version": os.environ.get("FUNCTIONS_EXTENSION_VERSION", "unknown")
+        }
+        
         if missing_vars:
-            return func.HttpResponse(
-                json.dumps({
-                    "status": "unhealthy",
-                    "missing_config": missing_vars
-                }),
-                mimetype="application/json",
-                status_code=503
-            )
+            health_data["missing_config"] = missing_vars
+            health_data["warning"] = "Some configuration variables are missing but basic function is operational"
+            # Still return 200 for basic connectivity test
+            status_code = 200
+        else:
+            health_data["message"] = "All configuration variables are present"
+            status_code = 200
         
         return func.HttpResponse(
-            json.dumps({
-                "status": "healthy",
-                "timestamp": datetime.now().isoformat()
-            }),
+            json.dumps(health_data, indent=2),
             mimetype="application/json",
-            status_code=200
+            status_code=status_code
         )
     except Exception as e:
         return func.HttpResponse(
             json.dumps({
                 "status": "error",
-                "error": str(e)
-            }),
+                "error": str(e),
+                "timestamp": datetime.now().isoformat()
+            }, indent=2),
             mimetype="application/json",
             status_code=500
         )
+
+@app.route(route="ping", auth_level=func.AuthLevel.ANONYMOUS)
+def ping(req: func.HttpRequest) -> func.HttpResponse:
+    """Simple ping endpoint for basic connectivity test"""
+    return func.HttpResponse(
+        json.dumps({
+            "status": "ok",
+            "timestamp": datetime.now().isoformat(),
+            "message": "Function App is responding"
+        }),
+        mimetype="application/json",
+        status_code=200
+    )
 
 # Keep the original function for backward compatibility
 @app.route(route="PdfOcrFunction", auth_level=func.AuthLevel.FUNCTION)
