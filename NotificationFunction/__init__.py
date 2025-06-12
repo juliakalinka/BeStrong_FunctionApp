@@ -13,8 +13,14 @@ def send_discord_notification(message: str):
         logging.error("Discord webhook URL not set")
         return
     try:
-        data = json.dumps({"content": "Test notification from blob trigger"}).encode('utf-8')
-        req = urllib.request.Request(url, data, {'Content-Type': 'application/json'})
+        req = urllib.request.Request(
+            url,
+            data=json.dumps({"content": "Test notification from blob trigger"}).encode('utf-8'),
+            headers={
+                'Content-Type': 'application/json',
+                'User-Agent': 'Mozilla/5.0'
+            }
+        )
         with urllib.request.urlopen(req, timeout=10) as response:
             logging.info(f"Discord response status: {response.status}")
     except Exception as e:
@@ -26,13 +32,10 @@ def send_slack_notification(message: str):
         logging.error("Slack webhook URL not set")
         return
     try:
-        data = json.dumps({"text": message}).encode('utf-8')
-        req = urllib.request.Request(url, data, {'Content-Type': 'application/json'})
-        with urllib.request.urlopen(req, timeout=10) as response:
-            if response.status == 200:  # Slack повертає 200 OK при успіху
-                logging.info("Slack notification sent successfully")
-            else:
-                logging.warning(f"Slack notification returned status: {response.status}")
+        payload = {"text": message}
+        response = requests.post(url, json=payload, timeout=10)
+        response.raise_for_status()
+        logging.info("Slack notification sent successfully")
     except Exception as e:
         logging.error(f"Failed to send Slack notification: {e}")
 
