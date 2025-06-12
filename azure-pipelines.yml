@@ -75,22 +75,15 @@ stages:
               appName: '$(devFunctionAppName)'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
               deploymentMethod: 'auto'
-              appSettings: |
-                FileShareConnectionString=$(FileShareConnectionString)
-                FormRecognizerEndpoint=$(FormRecognizerEndpoint)
-                FormRecognizerKey=$(FormRecognizerKey)
-                BlobStorageConnectionString=$(BlobStorageConnectionString)
-                DiscordWebhookUrl=$(DiscordWebhookUrl)
-                SlackWebhookUrl=$(SlackWebhookUrl) 
 
           - script: |
               echo "Checking environment variables:"
-              echo "FileShareConnectionString exists: $([ ! -z "$(FileShareConnectionString)" ] && echo 'yes' || echo 'no')"
-              echo "FormRecognizerEndpoint exists: $([ ! -z "$(FormRecognizerEndpoint)" ] && echo 'yes' || echo 'no')"
-              echo "FormRecognizerKey exists: $([ ! -z "$(FormRecognizerKey)" ] && echo 'yes' || echo 'no')"
-              echo "BlobStorageConnectionString exists: $([ ! -z "$(BlobStorageConnectionString)" ] && echo 'yes' || echo 'no')"
-              echo "DiscordWebhookUrl exists: $([ ! -z "$(DiscordWebhookUrl)" ] && echo 'yes' || echo 'no')"
-              echo "SlackWebhookUrl exists: $([ ! -z "$(SlackWebhookUrl)" ] && echo 'yes' || echo 'no')"
+              echo "FileShareConnectionString exists: $([ ! -z \"$(FileShareConnectionString)\" ] && echo 'yes' || echo 'no')"
+              echo "FormRecognizerEndpoint exists: $([ ! -z \"$(FormRecognizerEndpoint)\" ] && echo 'yes' || echo 'no')"
+              echo "FormRecognizerKey exists: $([ ! -z \"$(FormRecognizerKey)\" ] && echo 'yes' || echo 'no')"
+              echo "BlobStorageConnectionString exists: $([ ! -z \"$(BlobStorageConnectionString)\" ] && echo 'yes' || echo 'no')"
+              echo "DiscordWebhookUrl exists: $([ ! -z \"$(DiscordWebhookUrl)\" ] && echo 'yes' || echo 'no')"
+              echo "SlackWebhookUrl exists: $([ ! -z \"$(SlackWebhookUrl)\" ] && echo 'yes' || echo 'no')"
             displayName: 'Check Variables'
 
           - task: AzureCLI@2
@@ -129,22 +122,15 @@ stages:
               appName: '$(functionAppName)'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
               deploymentMethod: 'auto'
-              appSettings: |
-                FileShareConnectionString=$(FileShareConnectionString)
-                FormRecognizerEndpoint=$(FormRecognizerEndpoint)
-                FormRecognizerKey=$(FormRecognizerKey)
-                BlobStorageConnectionString=$(BlobStorageConnectionString)
-                DiscordWebhookUrl=$(DiscordWebhookUrl)
-                SlackWebhookUrl=$(SlackWebhookUrl) 
 
           - script: |
               echo "Checking environment variables:"
-              echo "FileShareConnectionString exists: $([ ! -z "$(FileShareConnectionString)" ] && echo 'yes' || echo 'no')"
-              echo "FormRecognizerEndpoint exists: $([ ! -z "$(FormRecognizerEndpoint)" ] && echo 'yes' || echo 'no')"
-              echo "FormRecognizerKey exists: $([ ! -z "$(FormRecognizerKey)" ] && echo 'yes' || echo 'no')"
-              echo "BlobStorageConnectionString exists: $([ ! -z "$(BlobStorageConnectionString)" ] && echo 'yes' || echo 'no')"
-              echo "DiscordWebhookUrl exists: $([ ! -z "$(DiscordWebhookUrl)" ] && echo 'yes' || echo 'no')"
-              echo "SlackWebhookUrl exists: $([ ! -z "$(SlackWebhookUrl)" ] && echo 'yes' || echo 'no')"
+              echo "FileShareConnectionString exists: $([ ! -z \"$(FileShareConnectionString)\" ] && echo 'yes' || echo 'no')"
+              echo "FormRecognizerEndpoint exists: $([ ! -z \"$(FormRecognizerEndpoint)\" ] && echo 'yes' || echo 'no')"
+              echo "FormRecognizerKey exists: $([ ! -z \"$(FormRecognizerKey)\" ] && echo 'yes' || echo 'no')"
+              echo "BlobStorageConnectionString exists: $([ ! -z \"$(BlobStorageConnectionString)\" ] && echo 'yes' || echo 'no')"
+              echo "DiscordWebhookUrl exists: $([ ! -z \"$(DiscordWebhookUrl)\" ] && echo 'yes' || echo 'no')"
+              echo "SlackWebhookUrl exists: $([ ! -z \"$(SlackWebhookUrl)\" ] && echo 'yes' || echo 'no')"
             displayName: 'Check Variables'
 
           - task: AzureCLI@2
