@@ -86,17 +86,7 @@ stages:
               appName: '$(targetAppName)'
               package: '$(Pipeline.Workspace)/function-package/function-app.zip'
               deploymentMethod: 'auto'
-              appSettings: >
-                FUNCTIONS_WORKER_RUNTIME=python
-                FUNCTIONS_EXTENSION_VERSION=~4
-                FileShareConnectionString=$(FileShareConnectionString)
-                FormRecognizerEndpoint=$(FormRecognizerEndpoint)
-                FormRecognizerKey=$(FormRecognizerKey)
-                BlobStorageConnectionString=$(BlobStorageConnectionString)
-                DiscordWebhookUrl=$(DiscordWebhookUrl)
-                SlackWebhookUrl=$(SlackWebhookUrl)
-                ENVIRONMENT=$(Build.SourceBranchName)
-                BUILD_ID=$(Build.BuildId)
+              appSettings: '-FUNCTIONS_WORKER_RUNTIME python -FUNCTIONS_EXTENSION_VERSION ~4 -FileShareConnectionString "$(FileShareConnectionString)" -FormRecognizerEndpoint "$(FormRecognizerEndpoint)" -FormRecognizerKey "$(FormRecognizerKey)" -BlobStorageConnectionString "$(BlobStorageConnectionString)" -DiscordWebhookUrl "$(DiscordWebhookUrl)" -SlackWebhookUrl "$(SlackWebhookUrl)" -ENVIRONMENT "$(Build.SourceBranchName)" -BUILD_ID "$(Build.BuildId)"'
             displayName: 'Deploy Azure Function'
 
           - script: |
