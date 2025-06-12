@@ -337,19 +337,7 @@ stages:
               appName: '$(functionAppNameProd)'
               package: '$(Pipeline.Workspace)/function-package/function-app.zip'
               deploymentMethod: 'zipDeploy'
-              appSettings: |
-                -FUNCTIONS_WORKER_RUNTIME python 
-                -FUNCTIONS_EXTENSION_VERSION ~4 
-                -WEBSITE_RUN_FROM_PACKAGE 1
-                -FileShareConnectionString "$(FileShareConnectionString)" 
-                -FormRecognizerEndpoint "$(FormRecognizerEndpoint)" 
-                -FormRecognizerKey "$(FormRecognizerKey)" 
-                -BlobStorageConnectionString "$(BlobStorageConnectionString)" 
-                -DiscordWebhookUrl "$(DiscordWebhookUrl)" 
-                -SlackWebhookUrl "$(SlackWebhookUrl)" 
-                -ENVIRONMENT production 
-                -BUILD_ID $(Build.BuildId)
-                -WEBSITE_ENABLE_SYNC_UPDATE_SITE true
+              appSettings: '-FUNCTIONS_WORKER_RUNTIME python -FUNCTIONS_EXTENSION_VERSION ~4 -WEBSITE_RUN_FROM_PACKAGE 1 -FileShareConnectionString "$(FileShareConnectionString)" -FormRecognizerEndpoint "$(FormRecognizerEndpoint)" -FormRecognizerKey "$(FormRecognizerKey)" -BlobStorageConnectionString "$(BlobStorageConnectionString)" -DiscordWebhookUrl "$(DiscordWebhookUrl)" -SlackWebhookUrl "$(SlackWebhookUrl)" -ENVIRONMENT production -BUILD_ID $(Build.BuildId) -WEBSITE_ENABLE_SYNC_UPDATE_SITE true'
 
           - task: AzureCLI@2
             displayName: 'Post-Deploy Validation'
