@@ -4,6 +4,9 @@ import json
 import os
 import urllib.request
 
+# Add this line at the start of the file
+logging.getLogger().setLevel(logging.DEBUG)
+
 def send_discord_notification(message: str) -> bool:
     """Send notification to Discord webhook"""
     url = os.environ.get("DiscordWebhookUrl")
