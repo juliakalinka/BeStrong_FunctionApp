@@ -67,13 +67,15 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         storage_account_key = file_share_conn.split('AccountKey=')[1].split(';')[0]
         
         # Step 1: Download PDF from File Share using REST API
-        file_share_url = f"https://{storage_account_name}.file.core.windows.net/myshare/{file_name}"
+        # URL encode the file name to handle spaces and special characters
+        encoded_file_name = urllib.parse.quote(file_name)
+        file_share_url = f"https://{storage_account_name}.file.core.windows.net/myshare/{encoded_file_name}"
         
         # Create authorization header for File Share
         from datetime import timezone
         
         utc_now = datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')
-        string_to_sign = f"GET\n\n\n\n\n\n\n\n\n\n\n\nx-ms-date:{utc_now}\nx-ms-version:2020-12-06\n/{storage_account_name}/myshare/{file_name}"
+        string_to_sign = f"GET\n\n\n\n\n\n\n\n\n\n\n\nx-ms-date:{utc_now}\nx-ms-version:2020-12-06\n/{storage_account_name}/myshare/{encoded_file_name}"
         
         key = base64.b64decode(storage_account_key)
         signature = base64.b64encode(hmac.new(key, string_to_sign.encode('utf-8'), hashlib.sha256).digest()).decode()
@@ -137,7 +139,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         # Step 4: Upload to Blob Storage using REST API
         blob_name = f"{os.path.splitext(file_name)[0]}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
-        blob_url = f"https://{storage_account_name}.blob.core.windows.net/mycontainer/{blob_name}"
+        encoded_blob_name = urllib.parse.quote(blob_name)
+        blob_url = f"https://{storage_account_name}.blob.core.windows.net/mycontainer/{encoded_blob_name}"
         
         json_data = json.dumps(json_result).encode('utf-8')
         
@@ -145,7 +148,7 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         utc_now = datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')
         content_length = str(len(json_data))
         
-        blob_string_to_sign = f"PUT\n\n\napplication/json\n\n\n\n\n\n\n\n\nx-ms-blob-type:BlockBlob\nx-ms-date:{utc_now}\nx-ms-version:2020-12-06\n/{storage_account_name}/mycontainer/{blob_name}"
+        blob_string_to_sign = f"PUT\n\n\napplication/json\n\n\n\n\n\n\n\n\nx-ms-blob-type:BlockBlob\nx-ms-date:{utc_now}\nx-ms-version:2020-12-06\n/{storage_account_name}/mycontainer/{encoded_blob_name}"
         
         blob_signature = base64.b64encode(hmac.new(key, blob_string_to_sign.encode('utf-8'), hashlib.sha256).digest()).decode()
         
