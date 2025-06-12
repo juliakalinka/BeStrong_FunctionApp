@@ -140,10 +140,6 @@ stages:
               appName: '$(functionAppNameDev)'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
               deploymentMethod: 'zipDeploy'
-              appSettings: |
-                -FUNCTIONS_WORKER_RUNTIME python
-                -WEBSITE_RUN_FROM_PACKAGE 1
-                -FUNCTIONS_EXTENSION_VERSION ~4
 
           - task: AzureCLI@2
             displayName: 'Configure Dev App Settings'
@@ -242,10 +238,6 @@ stages:
               appName: '$(functionAppNameProd)'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
               deploymentMethod: 'zipDeploy'
-              appSettings: |
-                -FUNCTIONS_WORKER_RUNTIME python
-                -WEBSITE_RUN_FROM_PACKAGE 1
-                -FUNCTIONS_EXTENSION_VERSION ~4
 
           - task: AzureCLI@2
             displayName: 'Configure Production App Settings'
