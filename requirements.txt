@@ -3,7 +3,8 @@
 # Manually managing azure-functions-worker may cause unexpected issues
 
 azure-functions==1.18.0
-azure-core==1.29.5
-azure-storage-blob==12.19.0
-azure-storage-file-share==12.15.0
-azure-ai-formrecognizer==3.3.0
+# Removed Azure SDK packages - using REST API instead
+# azure-core==1.29.5
+# azure-storage-blob==12.19.0
+# azure-storage-file-share==12.15.0
+# azure-ai-formrecognizer==3.3.0

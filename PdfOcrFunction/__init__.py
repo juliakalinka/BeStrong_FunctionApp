@@ -9,8 +9,8 @@ import tempfile
 import urllib.request
 import urllib.parse
 
-# Step 2: Testing AzureKeyCredential with correct versions
-from azure.core.credentials import AzureKeyCredential
+# Alternative approach: Using REST API instead of Azure SDK
+# from azure.core.credentials import AzureKeyCredential
 # from azure.storage.blob import BlobServiceClient
 # from azure.storage.fileshare import ShareServiceClient
 # from azure.ai.formrecognizer import DocumentAnalysisClient
@@ -50,17 +50,21 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(f"Initialization error: {str(e)}", status_code=500)
 
     try:
-        logging.info('Testing AzureKeyCredential with correct versions')
+        logging.info('Alternative approach: REST API instead of Azure SDK')
         
-        # Test AzureKeyCredential creation
-        test_key = AzureKeyCredential("dummy_test_key")
+        # Get environment variables for REST API calls
+        form_recognizer_endpoint = os.environ.get("FormRecognizerEndpoint", "")
+        form_recognizer_key = os.environ.get("FormRecognizerKey", "")
+        file_share_conn = os.environ.get("FileShareConnectionString", "")
+        blob_conn = os.environ.get("BlobStorageConnectionString", "")
         
         test_result = {
-            "status": "test_azure_key_credential",
+            "status": "rest_api_approach",
             "file_name": file_name,
             "timestamp": datetime.utcnow().isoformat(),
-            "message": "AzureKeyCredential works with azure-core==1.29.5!",
-            "credential_created": "success"
+            "message": "Using REST API instead of Azure SDK to avoid conflicts",
+            "form_recognizer_available": bool(form_recognizer_endpoint and form_recognizer_key),
+            "storage_available": bool(file_share_conn and blob_conn)
         }
         
         logging.info('Basic test completed successfully')
