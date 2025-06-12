@@ -2,6 +2,7 @@ trigger:
   branches:
     include:
       - main
+      - develop
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -89,5 +90,14 @@ stages:
               appSettings: '-FUNCTIONS_WORKER_RUNTIME python -FUNCTIONS_EXTENSION_VERSION ~4 -FileShareConnectionString "$(FileShareConnectionString)" -FormRecognizerEndpoint "$(FormRecognizerEndpoint)" -FormRecognizerKey "$(FormRecognizerKey)" -BlobStorageConnectionString "$(BlobStorageConnectionString)" -DiscordWebhookUrl "$(DiscordWebhookUrl)" -SlackWebhookUrl "$(SlackWebhookUrl)" -BUILD_ID "$(Build.BuildId)"'
             displayName: 'Deploy Azure Function'
 
-          # Deployment notifications removed - notifications now handled by NotificationFunction (blob trigger)
-          # when JSON files are uploaded to blob storage
+          - script: |
+              echo "Notifying deployment success..."
+              curl -X POST -H 'Content-type: application/json' \
+                --data "{\"content\":\"Deployment completed to $(targetAppName)\"}" \
+                "$(DiscordWebhookUrl)"
+
+              curl -X POST -H 'Content-type: application/json' \
+                --data "{\"text\":\"Deployment completed to $(targetAppName)\"}" \
+                "$(SlackWebhookUrl)"
+            displayName: 'Notify via Discord and Slack'
+            condition: always()
