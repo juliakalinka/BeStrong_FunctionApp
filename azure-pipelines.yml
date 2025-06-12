@@ -1,13 +1,5 @@
 trigger:
-  branches:
-    include:
-      - main
-  paths:
-    include:
-      - '**/*.py'
-      - 'requirements.txt'
-      - 'host.json'
-      - 'local.settings.json'
+  - main
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -22,61 +14,59 @@ variables:
   devResourceGroupName: 'rg-dev'
 
 stages:
-  - stage: Build
+- stage: Build
+  displayName: 'Build and Test'
+  jobs:
+  - job: BuildAndTest
     displayName: 'Build and Test'
-    jobs:
-      - job: BuildAndTest
-        displayName: 'Build and Test'
-        steps:
-          - task: UsePythonVersion@0
-            inputs:
-              versionSpec: '$(pythonVersion)'
-              addToPath: true
-            displayName: 'Use Python $(pythonVersion)'
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '$(pythonVersion)'
+        addToPath: true
+      displayName: 'Use Python $(pythonVersion)'
 
-          - task: Cache@2
-            inputs:
-              key: 'pip | "$(Agent.OS)" | **/requirements.txt'
-              restoreKeys: |
-                pip | "$(Agent.OS)"
-              path: $(PIP_CACHE_DIR)
-            displayName: Cache pip packages
+    - task: Cache@2
+      inputs:
+        key: 'pip | "$(Agent.OS)" | **/requirements.txt'
+        restoreKeys: |
+          pip | "$(Agent.OS)"
+        path: $(PIP_CACHE_DIR)
+      displayName: Cache pip packages
 
-          - script: |
-              python -m pip install --upgrade pip
-              pip install -r requirements.txt
-            displayName: 'Install dependencies'
-            condition: ne(variables['CacheRestored'], 'true')
+    - script: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+      displayName: 'Install dependencies'
+      condition: ne(variables['CacheRestored'], 'true')
 
-          - script: |
-              python -m pytest tests/ -v
-            displayName: 'Run tests'
+    - script: |
+        python -m pytest tests/ -v
+      displayName: 'Run tests'
 
-          - task: ArchiveFiles@2
-            inputs:
-              rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
-              includeRootFolder: false
-              archiveType: 'zip'
-              archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
-              replaceExistingArchive: true
-            displayName: 'Archive files'
+    - task: ArchiveFiles@2
+      inputs:
+        rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
+        includeRootFolder: false
+        archiveType: 'zip'
+        archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
+        replaceExistingArchive: true
+      displayName: 'Archive files'
 
-          - task: AzureFunctionApp@1
-            inputs:
-              azureSubscription: 'your-subscription'
-              appName: '$(functionAppName)'
-              package: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
-            displayName: 'Deploy to Azure Functions'
+    - task: AzureFunctionApp@1
+      displayName: 'Deploy to Azure Functions'
+      inputs:
+        azureSubscription: 'your-subscription'
+        appName: '$(functionAppName)'
+        package: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
 
-          - task: AzureCLI@2
-            inputs:
-              azureSubscription: 'your-subscription'
-              scriptType: 'bash'
-              scriptLocation: 'inlineScript'
-              inlineScript: |
-                echo "Checking deployment status..."
-                az functionapp show --name $(functionAppName) --resource-group $(resourceGroupName) --query "state"
-            displayName: 'Verify deployment status'
+    - task: AzureCLI@2
+      displayName: 'Verify deployment status'
+      inputs:
+        azureSubscription: 'your-subscription'
+        scriptType: 'bash'
+        scriptLocation: 'inlineScript'
+        inlineScript: 'echo "Checking deployment status..."; az functionapp show --name $(functionAppName) --resource-group $(resourceGroupName) --query "state"'
 
 - stage: DeployDev
   displayName: 'Deploy to Dev'
