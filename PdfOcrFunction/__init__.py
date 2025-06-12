@@ -63,8 +63,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         form_recognizer_key = os.environ["FormRecognizerKey"]
         
         # Extract storage account info from connection string
+        # Format: DefaultEndpointsProtocol=https;AccountName=...;AccountKey=...;EndpointSuffix=core.windows.net
         storage_account_name = file_share_conn.split('AccountName=')[1].split(';')[0]
         storage_account_key = file_share_conn.split('AccountKey=')[1].split(';')[0]
+        
+        logging.info(f'Parsed storage account: {storage_account_name}')
+        logging.info(f'Key length: {len(storage_account_key)} chars')
         
         # Step 1: Download PDF from File Share using REST API
         # URL encode the file name to handle spaces and special characters
@@ -75,10 +79,22 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         from datetime import timezone
         
         utc_now = datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')
-        string_to_sign = f"GET\n\n\n\n\n\n\n\n\n\n\n\nx-ms-date:{utc_now}\nx-ms-version:2020-12-06\n/{storage_account_name}/myshare/{encoded_file_name}"
+        
+        # Canonical resource for File Share: /{account}/{share}/{file_path}
+        canonical_resource = f"/{storage_account_name}/myshare/{encoded_file_name}"
+        
+        # String to sign format for File Share REST API
+        string_to_sign = f"GET\n\n\n\n\n\n\n\n\n\n\n\nx-ms-date:{utc_now}\nx-ms-version:2020-12-06\n{canonical_resource}"
         
         key = base64.b64decode(storage_account_key)
         signature = base64.b64encode(hmac.new(key, string_to_sign.encode('utf-8'), hashlib.sha256).digest()).decode()
+        
+        # Debug logging
+        logging.info(f'Account: {storage_account_name}')
+        logging.info(f'UTC Date: {utc_now}')
+        logging.info(f'File Share URL: {file_share_url}')
+        logging.info(f'String to sign: {repr(string_to_sign)}')
+        logging.info(f'Signature: {signature}')
         
         headers = {
             'x-ms-date': utc_now,
@@ -88,8 +104,16 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         # Download file
         req = urllib.request.Request(file_share_url, headers=headers)
-        with urllib.request.urlopen(req) as response:
-            pdf_data = response.read()
+        
+        try:
+            with urllib.request.urlopen(req) as response:
+                pdf_data = response.read()
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode() if hasattr(e, 'read') else 'No error body'
+            logging.error(f'HTTP Error {e.code}: {e.reason}')
+            logging.error(f'Error body: {error_body}')
+            logging.error(f'Headers sent: {headers}')
+            raise Exception(f'File Share auth error {e.code}: {e.reason} - {error_body}')
         
         logging.info(f'Downloaded PDF file: {len(pdf_data)} bytes')
         
@@ -148,7 +172,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         utc_now = datetime.now(timezone.utc).strftime('%a, %d %b %Y %H:%M:%S GMT')
         content_length = str(len(json_data))
         
-        blob_string_to_sign = f"PUT\n\n\napplication/json\n\n\n\n\n\n\n\n\nx-ms-blob-type:BlockBlob\nx-ms-date:{utc_now}\nx-ms-version:2020-12-06\n/{storage_account_name}/mycontainer/{encoded_blob_name}"
+        # Canonical resource for Blob Storage: /{account}/{container}/{blob}
+        blob_canonical_resource = f"/{storage_account_name}/mycontainer/{encoded_blob_name}"
+        
+        blob_string_to_sign = f"PUT\n\n\napplication/json\n\n\n\n\n\n\n\n\nx-ms-blob-type:BlockBlob\nx-ms-date:{utc_now}\nx-ms-version:2020-12-06\n{blob_canonical_resource}"
         
         blob_signature = base64.b64encode(hmac.new(key, blob_string_to_sign.encode('utf-8'), hashlib.sha256).digest()).decode()
         
