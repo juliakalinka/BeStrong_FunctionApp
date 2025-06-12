@@ -19,8 +19,29 @@ import time
 # from azure.storage.fileshare import ShareServiceClient
 # from azure.ai.formrecognizer import DocumentAnalysisClient
 
-# Notification functions moved to NotificationFunction (blob trigger)
-# They will automatically trigger when JSON files are uploaded to blob storage
+def send_discord_notification(message: str):
+    """Send notification to Discord webhook"""
+    url = os.environ.get("DiscordWebhookUrl")
+    if url:
+        try:
+            data = json.dumps({"content": message}).encode('utf-8')
+            req = urllib.request.Request(url, data, {'Content-Type': 'application/json'})
+            urllib.request.urlopen(req, timeout=10)
+            logging.info("Discord notification sent successfully")
+        except Exception as e:
+            logging.warning(f"Discord notification failed: {e}")
+
+def send_slack_notification(message: str):
+    """Send notification to Slack webhook"""
+    url = os.environ.get("SlackWebhookUrl")
+    if url:
+        try:
+            data = json.dumps({"text": message}).encode('utf-8')
+            req = urllib.request.Request(url, data, {'Content-Type': 'application/json'})
+            urllib.request.urlopen(req, timeout=10)
+            logging.info("Slack notification sent successfully")
+        except Exception as e:
+            logging.warning(f"Slack notification failed: {e}")
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
@@ -200,8 +221,20 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         logging.info(f'JSON uploaded to blob: {blob_name}')
         
-        # Note: Notifications will be sent automatically by NotificationFunction (blob trigger)
-        # when the JSON file appears in blob storage
+        # Step 5: Send notifications AFTER JSON file is successfully saved to blob storage
+        notification_message = f"""PDF OCR Processing Complete
+
+File: {file_name}
+Text extracted: {len(extracted_text)} characters
+Pages: {page_count}
+Result saved as: {blob_name}
+Processing time: {datetime.utcnow().isoformat()}
+
+JSON file has been uploaded to Azure Blob Storage."""
+        
+        logging.info('Sending notifications after successful blob upload...')
+        send_discord_notification(notification_message)
+        send_slack_notification(notification_message)
         
         return func.HttpResponse(json.dumps({
             "status": "success",
