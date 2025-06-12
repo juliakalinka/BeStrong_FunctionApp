@@ -1,10 +1,8 @@
-
 import azure.functions as func
 import logging
 import json
 import os
 import urllib.request
-import requests  # Add this import for Slack
 
 # Add this line at the start of the file
 logging.getLogger().setLevel(logging.DEBUG)
@@ -51,10 +49,33 @@ def send_slack_notification(message: str):
         
     try:
         payload = {"text": message}
-        response = requests.post(url, json=payload, timeout=10)
-        response.raise_for_status()
-        logging.info("Slack notification sent successfully")
-        return True
+        
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode('utf-8'),
+            headers={
+                'Content-Type': 'application/json',
+                'User-Agent': 'Azure-Function/1.0'
+            }
+        )
+        
+        with urllib.request.urlopen(req, timeout=10) as response:
+            response_body = response.read().decode('utf-8')
+            logging.info(f"Slack response status: {response.status}")
+            logging.info(f"Slack response body: {response_body}")
+            
+            if response.status == 200:
+                logging.info("Slack notification sent successfully")
+                return True
+            else:
+                logging.warning(f"Unexpected Slack response status: {response.status}")
+                return False
+                
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode('utf-8') if e.fp else "No error details"
+        logging.error(f"Slack HTTP Error {e.code}: {e.reason}")
+        logging.error(f"Slack error details: {error_body}")
+        return False
     except Exception as e:
         logging.error(f"Failed to send Slack notification: {e}")
         return False
