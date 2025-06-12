@@ -1,44 +1,48 @@
 trigger:
-  - main
+  branches:
+    include:
+    - main
+    - develop
+  paths:
+    include:
+    - '**/*.py'
+    - 'requirements.txt'
+    - 'host.json'
+    - 'local.settings.json'
 
 pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  PIP_CACHE_DIR: $(Pipeline.Workspace)/.pip-cache
-  functionAppName: 'bestrong-app'
-  pythonVersion: '3.9'
-  environment: 'prod'  # or dev
-  resourceGroupName: $[format('rg-{0}', variables['environment'])]
-  devFunctionAppName: 'devbestrongfuncapp1'
-  devResourceGroupName: 'rg-dev'
+  - name: pythonVersion
+    value: '3.9'
+  - name: environment
+    value: 'prod'  # or dev
+  - name: functionAppName
+    value: $[format('{0}bestrongfuncapp1', variables['environment'])]
+  - name: resourceGroupName
+    value: $[format('rg-{0}', variables['environment'])]
+  - name: devFunctionAppName
+    value: 'devbestrongfuncapp1'
+  - name: devResourceGroupName
+    value: 'rg-dev'
 
 stages:
 - stage: Build
-  displayName: 'Build and Test'
+  displayName: 'Build'
   jobs:
-  - job: BuildAndTest
-    displayName: 'Build and Test'
+  - job: Build
+    displayName: 'Build'
     steps:
     - task: UsePythonVersion@0
       inputs:
         versionSpec: '$(pythonVersion)'
         addToPath: true
-      displayName: 'Use Python $(pythonVersion)'
-
-    - task: Cache@2
-      inputs:
-        key: 'pip | "$(Agent.OS)" | **/requirements.txt'
-        restoreKeys: |
-          pip | "$(Agent.OS)"
-        path: $(PIP_CACHE_DIR)
-      displayName: Cache pip packages
 
     - script: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
       displayName: 'Install dependencies'
-      condition: ne(variables['CacheRestored'], 'true')
 
     - script: |
         python -m pytest tests/ -v
@@ -51,22 +55,12 @@ stages:
         archiveType: 'zip'
         archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
         replaceExistingArchive: true
-      displayName: 'Archive files'
 
-    - task: AzureFunctionApp@1
-      displayName: 'Deploy to Azure Functions'
+    - task: PublishBuildArtifacts@1
       inputs:
-        azureSubscription: 'your-subscription'
-        appName: '$(functionAppName)'
-        package: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
-
-    - task: AzureCLI@2
-      displayName: 'Verify deployment status'
-      inputs:
-        azureSubscription: 'your-subscription'
-        scriptType: 'bash'
-        scriptLocation: 'inlineScript'
-        inlineScript: 'echo "Checking deployment status..."; az functionapp show --name $(functionAppName) --resource-group $(resourceGroupName) --query "state"'
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+        ArtifactName: 'drop'
+        publishLocation: 'Container'
 
 - stage: DeployDev
   displayName: 'Deploy to Dev'
@@ -132,6 +126,13 @@ stages:
               appName: '$(functionAppName)'
               package: '$(Pipeline.Workspace)/drop/$(Build.BuildId).zip'
               deploymentMethod: 'auto'
+              appSettings: |
+                FileShareConnectionString=$(FileShareConnectionString)
+                FormRecognizerEndpoint=$(FormRecognizerEndpoint)
+                FormRecognizerKey=$(FormRecognizerKey)
+                BlobStorageConnectionString=$(BlobStorageConnectionString)
+                DiscordWebhookUrl=$(DiscordWebhookUrl)
+                SlackWebhookUrl=$(SlackWebhookUrl) 
 
           - script: |
               echo "Checking environment variables:"
@@ -160,7 +161,4 @@ stages:
                   WEBSITE_RUN_FROM_PACKAGE="1"
                 
                 echo "Verifying settings:"
-                az functionapp config appsettings list --name $(functionAppName) --resource-group $(resourceGroupName)
-                
-                echo "Checking specific settings:"
-                az functionapp config appsettings list --name $(functionAppName) --resource-group $(resourceGroupName) --query "[?contains(name, 'FormRecognizer') || contains(name, 'BlobStorage') || contains(name, 'Discord') || contains(name, 'Slack')].{Name:name, Value:value}" -o table 
+                az functionapp config appsettings list --name $(functionAppName) --resource-group $(resourceGroupName) 
