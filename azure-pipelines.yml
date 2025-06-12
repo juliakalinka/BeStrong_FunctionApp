@@ -44,13 +44,28 @@ stages:
         pip install -r requirements.txt
       displayName: 'Install dependencies'
 
+    - script: |
+        echo "Preparing files for deployment..."
+        mkdir $(Build.ArtifactStagingDirectory)/function_package
+        cp function_app.py $(Build.ArtifactStagingDirectory)/function_package/
+        cp host.json $(Build.ArtifactStagingDirectory)/function_package/
+        cp requirements.txt $(Build.ArtifactStagingDirectory)/function_package/
+        echo "Files copied to package directory"
+        ls -la $(Build.ArtifactStagingDirectory)/function_package/
+      displayName: 'Prepare Function Package'
+
     - task: ArchiveFiles@2
       inputs:
-        rootFolderOrFile: '$(System.DefaultWorkingDirectory)'
+        rootFolderOrFile: '$(Build.ArtifactStagingDirectory)/function_package'
         includeRootFolder: false
         archiveType: 'zip'
         archiveFile: '$(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip'
         replaceExistingArchive: true
+
+    - script: |
+        echo "Verifying archive contents..."
+        unzip -l $(Build.ArtifactStagingDirectory)/$(Build.BuildId).zip
+      displayName: 'Verify Archive Contents'
 
     - task: PublishBuildArtifacts@1
       inputs:
