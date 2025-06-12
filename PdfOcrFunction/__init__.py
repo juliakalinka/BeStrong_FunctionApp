@@ -19,25 +19,8 @@ import time
 # from azure.storage.fileshare import ShareServiceClient
 # from azure.ai.formrecognizer import DocumentAnalysisClient
 
-def send_discord_notification(message: str):
-    url = os.environ.get("DiscordWebhookUrl")
-    if url:
-        try:
-            data = json.dumps({"content": message}).encode('utf-8')
-            req = urllib.request.Request(url, data, {'Content-Type': 'application/json'})
-            urllib.request.urlopen(req, timeout=10)
-        except Exception as e:
-            logging.warning(f"Discord notification failed: {e}")
-
-def send_slack_notification(message: str):
-    url = os.environ.get("SlackWebhookUrl")
-    if url:
-        try:
-            data = json.dumps({"text": message}).encode('utf-8')
-            req = urllib.request.Request(url, data, {'Content-Type': 'application/json'})
-            urllib.request.urlopen(req, timeout=10)
-        except Exception as e:
-            logging.warning(f"Slack notification failed: {e}")
+# Notification functions moved to NotificationFunction (blob trigger)
+# They will automatically trigger when JSON files are uploaded to blob storage
 
 def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
@@ -217,10 +200,8 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         logging.info(f'JSON uploaded to blob: {blob_name}')
         
-        # Step 5: Send notifications
-        msg = f"✅ PDF processed via REST API: `{file_name}`\nSaved to blob: `{blob_name}`"
-        send_discord_notification(msg)
-        send_slack_notification(msg)
+        # Note: Notifications will be sent automatically by NotificationFunction (blob trigger)
+        # when the JSON file appears in blob storage
         
         return func.HttpResponse(json.dumps({
             "status": "success",
