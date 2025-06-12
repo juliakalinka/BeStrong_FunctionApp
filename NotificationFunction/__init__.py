@@ -33,6 +33,7 @@ def send_discord_notification(message: str):
         )
         with urllib.request.urlopen(req, timeout=10) as response:
             logging.info(f" Discord notification sent, status: {response.status}")
+            return True
     except urllib.error.HTTPError as e:
         logging.error(f" Discord HTTP Error: {e.code} - {e.reason}")
         try:
