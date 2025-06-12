@@ -13,13 +13,10 @@ def send_discord_notification(message: str):
         logging.error("Discord webhook URL not set")
         return
     try:
-        data = json.dumps({"content": message}).encode('utf-8')
+        data = json.dumps({"content": "Test notification from blob trigger"}).encode('utf-8')
         req = urllib.request.Request(url, data, {'Content-Type': 'application/json'})
         with urllib.request.urlopen(req, timeout=10) as response:
-            if response.status == 204:  # Discord повертає 204 No Content при успіху
-                logging.info("Discord notification sent successfully")
-            else:
-                logging.warning(f"Discord notification returned status: {response.status}")
+            logging.info(f"Discord response status: {response.status}")
     except Exception as e:
         logging.error(f"Failed to send Discord notification: {e}")
 
