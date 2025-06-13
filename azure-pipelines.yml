@@ -96,12 +96,12 @@ stages:
 
           - script: |
               # Set environment-specific variables using the environmentSuffix
-              echo "##vso[task.setvariable variable=DiscordWebhookUrl]$(DiscordWebhookUrl-$(environmentSuffix))"
-              echo "##vso[task.setvariable variable=SlackWebhookUrl]$(SlackWebhookUrl-$(environmentSuffix))"
-              echo "##vso[task.setvariable variable=BlobStorageConnectionString]$(BlobStorageConnectionString-$(environmentSuffix))"
-              echo "##vso[task.setvariable variable=FileShareConnectionString]$(FileShareConnectionString-$(environmentSuffix))"
-              echo "##vso[task.setvariable variable=FormRecognizerEndpoint]$(FormRecognizerEndpoint-$(environmentSuffix))"
-              echo "##vso[task.setvariable variable=FormRecognizerKey]$(FormRecognizerKey-$(environmentSuffix))"
+              echo "##vso[task.setvariable variable=DiscordWebhookUrl]$(DiscordWebhookUrl$(environmentSuffix))"
+              echo "##vso[task.setvariable variable=SlackWebhookUrl]$(SlackWebhookUrl$(environmentSuffix))"
+              echo "##vso[task.setvariable variable=BlobStorageConnectionString]$(BlobStorageConnectionString$(environmentSuffix))"
+              echo "##vso[task.setvariable variable=FileShareConnectionString]$(FileShareConnectionString$(environmentSuffix))"
+              echo "##vso[task.setvariable variable=FormRecognizerEndpoint]$(FormRecognizerEndpoint$(environmentSuffix))"
+              echo "##vso[task.setvariable variable=FormRecognizerKey]$(FormRecognizerKey$(environmentSuffix))"
             displayName: 'Set environment-specific secrets'
 
           - task: AzureCLI@2

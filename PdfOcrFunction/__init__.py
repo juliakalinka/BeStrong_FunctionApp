@@ -36,21 +36,21 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         logging.info('Processing PDF using REST API approach')
         
         # Get environment variables with environment suffix
-        file_share_conn = os.environ.get(f"FileShareConnectionString-{environment}")
-        blob_conn = os.environ.get(f"BlobStorageConnectionString-{environment}")
-        form_recognizer_endpoint = os.environ.get(f"FormRecognizerEndpoint-{environment}")
-        form_recognizer_key = os.environ.get(f"FormRecognizerKey-{environment}")
+        file_share_conn = os.environ.get(f"FileShareConnectionString{environment}")
+        blob_conn = os.environ.get(f"BlobStorageConnectionString{environment}")
+        form_recognizer_endpoint = os.environ.get(f"FormRecognizerEndpoint{environment}")
+        form_recognizer_key = os.environ.get(f"FormRecognizerKey{environment}")
         
         # Validate that all required environment variables are present
         missing_vars = []
         if not file_share_conn:
-            missing_vars.append(f"FileShareConnectionString-{environment}")
+            missing_vars.append(f"FileShareConnectionString{environment}")
         if not blob_conn:
-            missing_vars.append(f"BlobStorageConnectionString-{environment}")
+            missing_vars.append(f"BlobStorageConnectionString{environment}")
         if not form_recognizer_endpoint:
-            missing_vars.append(f"FormRecognizerEndpoint-{environment}")
+            missing_vars.append(f"FormRecognizerEndpoint{environment}")
         if not form_recognizer_key:
-            missing_vars.append(f"FormRecognizerKey-{environment}")
+            missing_vars.append(f"FormRecognizerKey{environment}")
             
         if missing_vars:
             error_msg = f"Missing environment variables: {', '.join(missing_vars)}"
