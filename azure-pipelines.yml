@@ -8,11 +8,18 @@ pool:
   vmImage: 'ubuntu-latest'
 
 variables:
-  pythonVersion: '3.9'
-  functionAppNameProd: 'prodbestrongfuncapp1'
-  functionAppNameDev: 'devbestrongfuncapp1'
-  resourceGroupProd: 'rg-prod'
-  resourceGroupDev: 'rg-dev'
+  - name: environment
+    value: $[eq(variables['Build.SourceBranchName'], 'main') ? 'prod' : 'dev']
+  - name: pythonVersion
+    value: '3.9'
+  - name: functionAppNameProd
+    value: 'prodbestrongfuncapp1'
+  - name: functionAppNameDev
+    value: 'devbestrongfuncapp1'
+  - name: resourceGroupProd
+    value: 'rg-prod'
+  - name: resourceGroupDev
+    value: 'rg-dev'
 
 stages:
 - stage: Build
@@ -52,7 +59,7 @@ stages:
   dependsOn: Build
   jobs:
   - deployment: DeployJob
-    environment: 'production'
+    environment: $[eq(variables['environment'], 'prod') ? 'production' : 'development']
     strategy:
       runOnce:
         deploy:
@@ -66,6 +73,19 @@ stages:
                 echo "##vso[task.setvariable variable=targetResourceGroup]$(resourceGroupDev)"
               fi
             displayName: 'Select deployment target'
+
+          - task: AzureKeyVault@2
+            inputs:
+              azureSubscription: 'bestrong-arm'
+              KeyVaultName: 'bestrongkeyvault1'
+              SecretsFilter: '*'
+              RunAsPreJob: true
+
+          - script: |
+              echo "##vso[task.setvariable variable=DiscordWebhookUrl]$(DiscordWebhookUrl-$(environment))"
+              echo "##vso[task.setvariable variable=SlackWebhookUrl]$(SlackWebhookUrl-$(environment))"
+              echo "##vso[task.setvariable variable=BlobStorageConnectionString]$(BlobStorageConnectionString-$(environment))"
+            displayName: 'Set environment-specific secrets'
 
           - task: AzureCLI@2
             inputs:
@@ -87,12 +107,5 @@ stages:
               appName: '$(targetAppName)'
               package: '$(Pipeline.Workspace)/function-package/function-app.zip'
               deploymentMethod: 'auto'
-              appSettings: '-FUNCTIONS_WORKER_RUNTIME python -FUNCTIONS_EXTENSION_VERSION ~4 -FileShareConnectionString "$(FileShareConnectionString)" -FormRecognizerEndpoint "$(FormRecognizerEndpoint)" -FormRecognizerKey "$(FormRecognizerKey)" -BlobStorageConnectionString "$(BlobStorageConnectionString)" -DiscordWebhookUrl "$(DiscordWebhookUrl)" -SlackWebhookUrl "$(SlackWebhookUrl)" -BUILD_ID "$(Build.BuildId)"'
+              appSettings: '-FUNCTIONS_WORKER_RUNTIME python -FUNCTIONS_EXTENSION_VERSION ~4 -BlobStorageConnectionString "$(BlobStorageConnectionString)" -DiscordWebhookUrl "$(DiscordWebhookUrl)" -SlackWebhookUrl "$(SlackWebhookUrl)" -BUILD_ID "$(Build.BuildId)"'
             displayName: 'Deploy Azure Function'
-
-          - task: AzureKeyVault@2
-            inputs:
-              azureSubscription: 'bestrong-arm'
-              KeyVaultName: 'bestrongkeyvault1'
-              SecretsFilter: '*'
-              RunAsPreJob: true
