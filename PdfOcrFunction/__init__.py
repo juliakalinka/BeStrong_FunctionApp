@@ -1,3 +1,4 @@
+
 import azure.functions as func
 import logging
 import os
@@ -13,18 +14,13 @@ import hashlib
 import hmac
 import time
 
-# Alternative approach: Using REST API instead of Azure SDK
-# from azure.core.credentials import AzureKeyCredential
-# from azure.storage.blob import BlobServiceClient
-# from azure.storage.fileshare import ShareServiceClient
-# from azure.ai.formrecognizer import DocumentAnalysisClient
-
-# Notification functions moved to separate NotificationFunction
-# Notifications will be handled by blob trigger
-
 def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
         logging.info('Function triggered - START')
+        
+        # Get environment information
+        environment = os.environ.get("ENVIRONMENT", "dev")  # Default to dev if not set
+        logging.info(f'Running in environment: {environment}')
         
         file_name = req.params.get('file_name')
         logging.info(f'File name parameter: {file_name}')
@@ -39,11 +35,27 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
         logging.info('Processing PDF using REST API approach')
         
-        # Parse connection strings
-        file_share_conn = os.environ["FileShareConnectionString"]
-        blob_conn = os.environ["BlobStorageConnectionString"] 
-        form_recognizer_endpoint = os.environ["FormRecognizerEndpoint"]
-        form_recognizer_key = os.environ["FormRecognizerKey"]
+        # Get environment variables with environment suffix
+        file_share_conn = os.environ.get(f"FileShareConnectionString{environment}")
+        blob_conn = os.environ.get(f"BlobStorageConnectionString{environment}")
+        form_recognizer_endpoint = os.environ.get(f"FormRecognizerEndpoint{environment}")
+        form_recognizer_key = os.environ.get(f"FormRecognizerKey{environment}")
+        
+        # Validate that all required environment variables are present
+        missing_vars = []
+        if not file_share_conn:
+            missing_vars.append(f"FileShareConnectionString{environment}")
+        if not blob_conn:
+            missing_vars.append(f"BlobStorageConnectionString{environment}")
+        if not form_recognizer_endpoint:
+            missing_vars.append(f"FormRecognizerEndpoint{environment}")
+        if not form_recognizer_key:
+            missing_vars.append(f"FormRecognizerKey{environment}")
+            
+        if missing_vars:
+            error_msg = f"Missing environment variables: {', '.join(missing_vars)}"
+            logging.error(error_msg)
+            return func.HttpResponse(error_msg, status_code=500)
         
         # Extract storage account info from connection strings
         # File Share connection
@@ -54,10 +66,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         blob_storage_account_name = blob_conn.split('AccountName=')[1].split(';')[0]
         blob_storage_account_key = blob_conn.split('AccountKey=')[1].split(';')[0]
         
+        logging.info(f'Environment: {environment}')
         logging.info(f'Parsed File Share account: {fs_storage_account_name}')
         logging.info(f'Parsed Blob Storage account: {blob_storage_account_name}')
-        logging.info(f'FS Key length: {len(fs_storage_account_key)} chars')
-        logging.info(f'Blob Key length: {len(blob_storage_account_key)} chars')
+        logging.info(f'Form Recognizer endpoint: {form_recognizer_endpoint}')
         
         # Step 1: Download PDF from File Share using REST API
         # URL encode the file name to handle spaces and special characters
@@ -82,8 +94,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         logging.info(f'FS Account: {fs_storage_account_name}')
         logging.info(f'UTC Date: {utc_now}')
         logging.info(f'File Share URL: {file_share_url}')
-        logging.info(f'FS String to sign: {repr(fs_string_to_sign)}')
-        logging.info(f'FS Signature: {fs_signature}')
         
         headers = {
             'x-ms-date': utc_now,
@@ -101,7 +111,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             error_body = e.read().decode() if hasattr(e, 'read') else 'No error body'
             logging.error(f'HTTP Error {e.code}: {e.reason}')
             logging.error(f'Error body: {error_body}')
-            logging.error(f'Headers sent: {headers}')
             raise Exception(f'File Share auth error {e.code}: {e.reason} - {error_body}')
         
         logging.info(f'Downloaded PDF file: {len(pdf_data)} bytes')
@@ -142,16 +151,18 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         logging.info(f'Text extracted successfully: {len(extracted_text)} characters')
         
-        # Step 3: Create JSON result
+        # Step 3: Create JSON result with environment info
         json_result = {
             "file_name": file_name,
             "timestamp": datetime.utcnow().isoformat(),
             "text": extracted_text,
-            "page_count": page_count
+            "page_count": page_count,
+            "environment": environment,
+            "processed_by": f"{environment}-function"
         }
         
         # Step 4: Upload to Blob Storage using REST API
-        blob_name = f"{os.path.splitext(file_name)[0]}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+        blob_name = f"{environment}_{os.path.splitext(file_name)[0]}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
         encoded_blob_name = urllib.parse.quote(blob_name)
         blob_url = f"https://{blob_storage_account_name}.blob.core.windows.net/mycontainer/{encoded_blob_name}"
         
@@ -165,7 +176,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         blob_canonical_resource = f"/{blob_storage_account_name}/mycontainer/{encoded_blob_name}"
         
         # Correct string_to_sign format for Blob Storage PUT operation
-        # Format: VERB\n\n\nContent-Length\n\nContent-Type\n\n\n\n\n\n\nx-ms-*headers\nCanonicalizedResource
         blob_string_to_sign = f"PUT\n\n\n{content_length}\n\napplication/json\n\n\n\n\n\n\nx-ms-blob-type:BlockBlob\nx-ms-date:{blob_utc_now}\nx-ms-version:2020-12-06\n{blob_canonical_resource}"
         
         blob_key = base64.b64decode(blob_storage_account_key)
@@ -175,8 +185,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         logging.info(f'Blob Account: {blob_storage_account_name}')
         logging.info(f'Blob URL: {blob_url}')
         logging.info(f'Content Length: {content_length}')
-        logging.info(f'Blob String to sign: {repr(blob_string_to_sign)}')
-        logging.info(f'Blob Signature: {blob_signature}')
         
         blob_headers = {
             'x-ms-date': blob_utc_now,
@@ -195,7 +203,6 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             error_body = e.read().decode() if hasattr(e, 'read') else 'No error body'
             logging.error(f'Blob Storage HTTP Error {e.code}: {e.reason}')
             logging.error(f'Blob error body: {error_body}')
-            logging.error(f'Blob headers sent: {blob_headers}')
             raise Exception(f'Blob Storage auth error {e.code}: {e.reason} - {error_body}')
         
         logging.info(f'JSON uploaded to blob: {blob_name}')
@@ -205,12 +212,13 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         return func.HttpResponse(json.dumps({
             "status": "success",
-            "message": "PDF processed successfully using REST API",
+            "message": f"PDF processed successfully in {environment} environment",
+            "environment": environment,
             "blob_name": blob_name,
             "text_length": len(extracted_text),
             "page_count": page_count
         }), mimetype="application/json")
 
     except Exception as e:
-        logging.error(f'Error in basic test: {str(e)}', exc_info=True)
-        return func.HttpResponse(f"Basic test error: {str(e)}", status_code=500)
+        logging.error(f'Error in PDF processing: {str(e)}', exc_info=True)
+        return func.HttpResponse(f"Processing error: {str(e)}", status_code=500)

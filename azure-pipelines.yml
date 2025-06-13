@@ -9,15 +9,23 @@ pool:
 
 variables:
   - name: environment
-    value: $[eq(variables['Build.SourceBranchName'], 'main') ? 'prod' : 'dev']
+    ${{ if eq(variables['Build.SourceBranchName'], 'main') }}:
+      value: 'prod'
+    ${{ else }}:
+      value: 'dev'
   - name: pythonVersion
     value: '3.9'
+  # Shared Key Vault for both environments
+  - name: keyVaultName
+    value: 'bestrongkeyvault1'
+  # Production resources
   - name: functionAppNameProd
     value: 'prodbestrongfuncapp1'
-  - name: functionAppNameDev
-    value: 'devbestrongfuncapp1'
   - name: resourceGroupProd
     value: 'rg-prod'
+  # Development resources
+  - name: functionAppNameDev
+    value: 'devbestrongfuncapp1'
   - name: resourceGroupDev
     value: 'rg-dev'
 
@@ -59,7 +67,10 @@ stages:
   dependsOn: Build
   jobs:
   - deployment: DeployJob
-    environment: $[eq(variables['environment'], 'prod') ? 'production' : 'development']
+    ${{ if eq(variables['Build.SourceBranchName'], 'main') }}:
+      environment: 'production'
+    ${{ else }}:
+      environment: 'development'
     strategy:
       runOnce:
         deploy:
@@ -68,23 +79,37 @@ stages:
               if [[ "$(Build.SourceBranch)" == "refs/heads/main" ]]; then
                 echo "##vso[task.setvariable variable=targetAppName]$(functionAppNameProd)"
                 echo "##vso[task.setvariable variable=targetResourceGroup]$(resourceGroupProd)"
+                echo "##vso[task.setvariable variable=environmentSuffix]prod"
               else
                 echo "##vso[task.setvariable variable=targetAppName]$(functionAppNameDev)"
                 echo "##vso[task.setvariable variable=targetResourceGroup]$(resourceGroupDev)"
+                echo "##vso[task.setvariable variable=environmentSuffix]dev"
               fi
             displayName: 'Select deployment target'
 
           - task: AzureKeyVault@2
             inputs:
               azureSubscription: 'bestrong-arm'
-              KeyVaultName: 'bestrongkeyvault1'
+              KeyVaultName: '$(keyVaultName)'
               SecretsFilter: '*'
               RunAsPreJob: true
 
           - script: |
-              echo "##vso[task.setvariable variable=DiscordWebhookUrl]$(DiscordWebhookUrl-$(environment))"
-              echo "##vso[task.setvariable variable=SlackWebhookUrl]$(SlackWebhookUrl-$(environment))"
-              echo "##vso[task.setvariable variable=BlobStorageConnectionString]$(BlobStorageConnectionString-$(environment))"
+              if [[ "$(Build.SourceBranch)" == "refs/heads/main" ]]; then
+                echo "##vso[task.setvariable variable=DiscordWebhookUrl]$(DiscordWebhookUrlProd)"
+                echo "##vso[task.setvariable variable=SlackWebhookUrl]$(SlackWebhookUrlProd)"
+                echo "##vso[task.setvariable variable=BlobStorageConnectionString]$(BlobStorageConnectionStringProd)"
+                echo "##vso[task.setvariable variable=FileShareConnectionString]$(FileShareConnectionStringProd)"
+                echo "##vso[task.setvariable variable=FormRecognizerEndpoint]$(FormRecognizerEndpointProd)"
+                echo "##vso[task.setvariable variable=FormRecognizerKey]$(FormRecognizerKeyProd)"
+              else
+                echo "##vso[task.setvariable variable=DiscordWebhookUrl]$(DiscordWebhookUrlDev)"
+                echo "##vso[task.setvariable variable=SlackWebhookUrl]$(SlackWebhookUrlDev)"
+                echo "##vso[task.setvariable variable=BlobStorageConnectionString]$(BlobStorageConnectionStringDev)"
+                echo "##vso[task.setvariable variable=FileShareConnectionString]$(FileShareConnectionStringDev)"
+                echo "##vso[task.setvariable variable=FormRecognizerEndpoint]$(FormRecognizerEndpointDev)"
+                echo "##vso[task.setvariable variable=FormRecognizerKey]$(FormRecognizerKeyDev)"
+              fi
             displayName: 'Set environment-specific secrets'
 
           - task: AzureCLI@2
@@ -107,5 +132,5 @@ stages:
               appName: '$(targetAppName)'
               package: '$(Pipeline.Workspace)/function-package/function-app.zip'
               deploymentMethod: 'auto'
-              appSettings: '-FUNCTIONS_WORKER_RUNTIME python -FUNCTIONS_EXTENSION_VERSION ~4 -BlobStorageConnectionString "$(BlobStorageConnectionString)" -DiscordWebhookUrl "$(DiscordWebhookUrl)" -SlackWebhookUrl "$(SlackWebhookUrl)" -BUILD_ID "$(Build.BuildId)"'
+              appSettings: '-FUNCTIONS_WORKER_RUNTIME python -FUNCTIONS_EXTENSION_VERSION ~4 -BlobStorageConnectionString "$(BlobStorageConnectionString)" -FileShareConnectionString "$(FileShareConnectionString)" -FormRecognizerEndpoint "$(FormRecognizerEndpoint)" -FormRecognizerKey "$(FormRecognizerKey)" -DiscordWebhookUrl "$(DiscordWebhookUrl)" -SlackWebhookUrl "$(SlackWebhookUrl)" -BUILD_ID "$(Build.BuildId)" -ENVIRONMENT "$(environmentSuffix)"'
             displayName: 'Deploy Azure Function'
