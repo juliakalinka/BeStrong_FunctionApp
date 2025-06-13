@@ -8,6 +8,9 @@ import urllib.request
 # Add this line at the start of the file
 logging.getLogger().setLevel(logging.DEBUG)
 
+# Змінні середовища для Azure Functions повинні бути налаштовані через Key Vault references у Configuration (наприклад, DiscordWebhookUrl = @Microsoft.KeyVault(SecretUri=https://bestrongkeyvault1.vault.azure.net/secrets/DiscordWebhookUrl/))
+# Код не змінюється, оскільки Azure Functions автоматично підставляє значення з Key Vault
+
 def send_discord_notification(message: str):
     url = os.environ.get("DiscordWebhookUrl")
     if not url:
