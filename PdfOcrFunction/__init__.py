@@ -1,3 +1,4 @@
+
 import azure.functions as func
 import logging
 import os
@@ -34,22 +35,22 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     try:
         logging.info('Processing PDF using REST API approach')
         
-        # Get environment variables - these should be set automatically by the pipeline
-        file_share_conn = os.environ.get("FileShareConnectionString")
-        blob_conn = os.environ.get("BlobStorageConnectionString")
-        form_recognizer_endpoint = os.environ.get("FormRecognizerEndpoint")
-        form_recognizer_key = os.environ.get("FormRecognizerKey")
+        # Get environment variables with environment suffix
+        file_share_conn = os.environ.get(f"FileShareConnectionString-{environment}")
+        blob_conn = os.environ.get(f"BlobStorageConnectionString-{environment}")
+        form_recognizer_endpoint = os.environ.get(f"FormRecognizerEndpoint-{environment}")
+        form_recognizer_key = os.environ.get(f"FormRecognizerKey-{environment}")
         
         # Validate that all required environment variables are present
         missing_vars = []
         if not file_share_conn:
-            missing_vars.append("FileShareConnectionString")
+            missing_vars.append(f"FileShareConnectionString-{environment}")
         if not blob_conn:
-            missing_vars.append("BlobStorageConnectionString")
+            missing_vars.append(f"BlobStorageConnectionString-{environment}")
         if not form_recognizer_endpoint:
-            missing_vars.append("FormRecognizerEndpoint")
+            missing_vars.append(f"FormRecognizerEndpoint-{environment}")
         if not form_recognizer_key:
-            missing_vars.append("FormRecognizerKey")
+            missing_vars.append(f"FormRecognizerKey-{environment}")
             
         if missing_vars:
             error_msg = f"Missing environment variables: {', '.join(missing_vars)}"
