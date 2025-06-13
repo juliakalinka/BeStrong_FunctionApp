@@ -9,7 +9,7 @@ pool:
 
 variables:
   - name: environment
-    value: $[eq(variables['Build.SourceBranchName'], 'main'), 'prod', 'dev']
+    value: $[if(eq(variables['Build.SourceBranchName'], 'main')) 'prod' else 'dev']
   - name: pythonVersion
     value: '3.9'
   # Shared Key Vault for both environments
