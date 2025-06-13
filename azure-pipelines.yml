@@ -94,7 +94,6 @@ stages:
               SecretsFilter: '*'
               RunAsPreJob: true
 
-          # ВИПРАВЛЕНО: Правильне встановлення змінних середовища
           - script: |
               if [[ "$(Build.SourceBranch)" == "refs/heads/main" ]]; then
                 echo "##vso[task.setvariable variable=DiscordWebhookUrl]$(DiscordWebhookUrlProd)"
