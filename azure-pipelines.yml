@@ -94,13 +94,23 @@ stages:
               SecretsFilter: '*'
               RunAsPreJob: true
 
+          # ВИПРАВЛЕНО: Правильне встановлення змінних середовища
           - script: |
-              echo "##vso[task.setvariable variable=DiscordWebhookUrl]$(DiscordWebhookUrl$(environment))"
-              echo "##vso[task.setvariable variable=SlackWebhookUrl]$(SlackWebhookUrl$(environment))"
-              echo "##vso[task.setvariable variable=BlobStorageConnectionString]$(BlobStorageConnectionString$(environment))"
-              echo "##vso[task.setvariable variable=FileShareConnectionString]$(FileShareConnectionString$(environment))"
-              echo "##vso[task.setvariable variable=FormRecognizerEndpoint]$(FormRecognizerEndpoint$(environment))"
-              echo "##vso[task.setvariable variable=FormRecognizerKey]$(FormRecognizerKey$(environment))"
+              if [[ "$(Build.SourceBranch)" == "refs/heads/main" ]]; then
+                echo "##vso[task.setvariable variable=DiscordWebhookUrl]$(DiscordWebhookUrlProd)"
+                echo "##vso[task.setvariable variable=SlackWebhookUrl]$(SlackWebhookUrlProd)"
+                echo "##vso[task.setvariable variable=BlobStorageConnectionString]$(BlobStorageConnectionStringProd)"
+                echo "##vso[task.setvariable variable=FileShareConnectionString]$(FileShareConnectionStringProd)"
+                echo "##vso[task.setvariable variable=FormRecognizerEndpoint]$(FormRecognizerEndpointProd)"
+                echo "##vso[task.setvariable variable=FormRecognizerKey]$(FormRecognizerKeyProd)"
+              else
+                echo "##vso[task.setvariable variable=DiscordWebhookUrl]$(DiscordWebhookUrlDev)"
+                echo "##vso[task.setvariable variable=SlackWebhookUrl]$(SlackWebhookUrlDev)"
+                echo "##vso[task.setvariable variable=BlobStorageConnectionString]$(BlobStorageConnectionStringDev)"
+                echo "##vso[task.setvariable variable=FileShareConnectionString]$(FileShareConnectionStringDev)"
+                echo "##vso[task.setvariable variable=FormRecognizerEndpoint]$(FormRecognizerEndpointDev)"
+                echo "##vso[task.setvariable variable=FormRecognizerKey]$(FormRecognizerKeyDev)"
+              fi
             displayName: 'Set environment-specific secrets'
 
           - task: AzureCLI@2
