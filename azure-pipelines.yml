@@ -9,7 +9,10 @@ pool:
 
 variables:
   - name: environment
-    value: $[if(eq(variables['Build.SourceBranchName'], 'main')) 'prod' else 'dev']
+    ${{ if eq(variables['Build.SourceBranchName'], 'main') }}:
+      value: 'prod'
+    ${{ else }}:
+      value: 'dev'
   - name: pythonVersion
     value: '3.9'
   # Shared Key Vault for both environments
@@ -64,7 +67,10 @@ stages:
   dependsOn: Build
   jobs:
   - deployment: DeployJob
-    environment: $[eq(variables['environment'], 'prod'), 'production', 'development']
+    ${{ if eq(variables['Build.SourceBranchName'], 'main') }}:
+      environment: 'production'
+    ${{ else }}:
+      environment: 'development'
     strategy:
       runOnce:
         deploy:
