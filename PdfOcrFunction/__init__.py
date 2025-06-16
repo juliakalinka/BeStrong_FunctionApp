@@ -118,6 +118,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         # Step 2: Send to Form Recognizer using REST API
         fr_url = f"{form_recognizer_endpoint.rstrip('/')}/formrecognizer/documentModels/prebuilt-document:analyze?api-version=2023-07-31"
         
+        # Log Form Recognizer details for debugging
+        logging.info(f'Form Recognizer URL: {fr_url}')
+        logging.info(f'Form Recognizer Key (first 10 chars): {form_recognizer_key[:10]}...' if form_recognizer_key else 'No key found')
+        
         fr_headers = {
             'Ocp-Apim-Subscription-Key': form_recognizer_key,
             'Content-Type': 'application/pdf'
@@ -125,8 +129,14 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         
         fr_request = urllib.request.Request(fr_url, data=pdf_data, headers=fr_headers, method='POST')
         
-        with urllib.request.urlopen(fr_request) as fr_response:
-            operation_location = fr_response.headers.get('Operation-Location')
+        try:
+            with urllib.request.urlopen(fr_request) as fr_response:
+                operation_location = fr_response.headers.get('Operation-Location')
+        except urllib.error.HTTPError as e:
+            error_body = e.read().decode() if hasattr(e, 'read') else 'No error body'
+            logging.error(f'Form Recognizer HTTP Error {e.code}: {e.reason}')
+            logging.error(f'Form Recognizer error body: {error_body}')
+            raise Exception(f'Form Recognizer auth error {e.code}: {e.reason} - {error_body}')
         
         logging.info(f'Form Recognizer operation started: {operation_location}')
         
