@@ -41,6 +41,10 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
         form_recognizer_endpoint = os.environ.get(f"FormRecognizerEndpoint{environment}")
         form_recognizer_key = os.environ.get(f"FormRecognizerKey{environment}")
         
+        # Debug logging for environment variables
+        logging.info(f'Raw FormRecognizerEndpoint{environment}: {form_recognizer_endpoint}')
+        logging.info(f'Raw FormRecognizerKey{environment} (first 20 chars): {form_recognizer_key[:20] if form_recognizer_key else "None"}...')
+        
         # Validate that all required environment variables are present
         missing_vars = []
         if not file_share_conn:
