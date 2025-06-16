@@ -60,7 +60,10 @@ def send_slack_notification(message: str, environment: str):
         env_indicator = ":large_green_circle: PRODUCTION" if environment == "prod" else ":large_yellow_circle: DEVELOPMENT"
         enhanced_message = f"{env_indicator}\n{message}"
         
-        payload = {"text": enhanced_message}
+        payload = {
+            "text": enhanced_message,
+            "channel": "#all-bestrong"
+        }
         
         req = urllib.request.Request(
             url,
