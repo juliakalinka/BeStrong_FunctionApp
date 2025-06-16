@@ -15,15 +15,12 @@ variables:
       value: 'dev'
   - name: pythonVersion
     value: '3.9'
-  # Shared Key Vault for both environments
   - name: keyVaultName
     value: 'bestrongkeyvault1'
-  # Production resources
   - name: functionAppNameProd
     value: 'prodbestrongfuncapp1'
   - name: resourceGroupProd
     value: 'rg-prod'
-  # Development resources
   - name: functionAppNameDev
     value: 'devbestrongfuncapp1'
   - name: resourceGroupDev
